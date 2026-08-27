@@ -1,0 +1,446 @@
+/* ==========================================================================
+   Patient Dashboard Specific Styles (mainpage.php)
+   ========================================================================== */
+
+   /* Brand & Logo Layout */
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.brand-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--primary-blue);
+    color: var(--white);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+/* Top Header Navigation (.patient-nav) */
+.patient-nav {
+    background-color: var(--white);
+    height: 70px;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.role-tag {
+    background-color: #d1fae5;
+    color: #065f46;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    letter-spacing: 0.5px;
+}
+
+.nav-tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.nav-tab {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--slate-600);
+    transition: var(--transition);
+}
+
+.nav-tab:hover {
+    color: var(--primary-blue);
+    background-color: var(--slate-50);
+}
+
+.nav-tab.active {
+    background-color: #eff6ff;
+    color: var(--primary-blue);
+}
+
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.user-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.user-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--slate-800);
+}
+
+/* Doctors Dashboard container & widgets */
+.dashboard-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 30px;
+}
+
+.welcome-banner-blue {
+    background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+    border-radius: var(--radius-md);
+    padding: 32px;
+    color: var(--white);
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-md);
+    position: relative;
+    overflow: hidden;
+}
+
+.welcome-banner-blue::after {
+    content: '';
+    position: absolute;
+    width: 250px;
+    height: 250px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    right: -50px;
+    bottom: -100px;
+}
+
+.welcome-banner-blue h2 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.welcome-banner-blue p {
+    font-size: 14px;
+    opacity: 0.9;
+    margin-bottom: 20px;
+}
+
+.banner-buttons {
+    display: flex;
+    gap: 12px;
+    position: relative;
+    z-index: 2;
+}
+
+.btn-banner-outline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: var(--white);
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: var(--transition);
+}
+
+.btn-banner-outline:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Custom schedule list styling */
+.schedule-list-card {
+    background: var(--white);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+}
+
+.schedule-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 4px;
+}
+
+.schedule-list-title {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--slate-900);
+}
+
+.schedule-list-subtitle {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: var(--slate-400);
+}
+
+.view-all-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--primary-blue);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.view-all-link svg {
+    width: 13px;
+    height: 13px;
+}
+
+.schedule-badge-row {
+    display: flex;
+    gap: 8px;
+}
+
+.schedule-row-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.schedule-row-item:last-child {
+    border-bottom: none;
+}
+
+.schedule-doctor-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.doctor-initial-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--white);
+}
+
+.doctor-name-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--slate-900);
+}
+
+.doctor-type-text {
+    font-size: 12px;
+    color: var(--slate-400);
+    margin-top: 2px;
+}
+
+.schedule-time-status {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.schedule-time-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--slate-800);
+    text-align: right;
+    min-width: 80px;
+}
+
+/* Action button in row */
+.btn-row-action {
+    padding: 8px 16px;
+    background-color: #2563eb;
+    color: var(--white);
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-row-action:hover {
+    background-color: #1d4ed8;
+}
+
+
+
+/* Quick action buttons row */
+.quick-action-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    transition: var(--transition);
+    margin-bottom: 10px;
+}
+
+.quick-action-link:last-child {
+    margin-bottom: 0;
+}
+
+.quick-action-link.blue-action {
+    background-color: #eff6ff;
+    color: #1d4ed8;
+}
+
+.quick-action-link.blue-action:hover {
+    background-color: #dbeafe;
+}
+
+.quick-action-link.teal-action {
+    background-color: #f0fdf4;
+    color: #16a34a;
+}
+
+.quick-action-link.teal-action:hover {
+    background-color: #dcfce7;
+}
+
+.quick-action-link.purple-action {
+    background-color: #faf5ff;
+    color: #7c3aed;
+}
+
+.quick-action-link.purple-action:hover {
+    background-color: #f3e8ff;
+}
+
+.quick-action-link.orange-action {
+    background-color: #fffbeb;
+    color: #d97706;
+}
+
+.quick-action-link.orange-action:hover {
+    background-color: #fef3c7;
+}
+
+.actions {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+ 
+  .btn {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid #e3e5ea;
+    background: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+ 
+  .btn.reschedule { color: #374151; }
+  .btn.reschedule:hover { background: #f9fafb; }
+ 
+  .btn.cancel {
+    color: #ef4444;
+    border-color: #fbdcdc;
+  }
+  .btn.cancel:hover { background: #fff5f5; }
+
+  .doctor-datetime {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 13px;
+    color: #4b5563;
+    margin-top: 4px;
+  }
+ 
+  .doctor-datetime span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .doctor-datetime svg {
+    width: 13px;
+    height: 13px;
+    color: #9ca3af;
+  }
+
+
+/* ==========================================================================
+   Shared elements used across booking & appointment pages
+   ========================================================================== */
+
+.booking-page-header {
+    margin-bottom: 24px;
+}
+
+.booking-page-header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--slate-900);
+    margin: 0 0 4px;
+}
+
+.booking-page-header p {
+    font-size: 14px;
+    color: var(--slate-400);
+    margin: 0;
+}
+.doctor-search-input {
+    width: 100%;
+    padding: 11px 14px 11px 38px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--slate-800);
+    background-color: var(--slate-50);
+    transition: var(--transition);
+    box-sizing: border-box;
+}
+
+.doctor-search-input:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+    background-color: var(--white);
+}
+
+/* Page background, replaces <body style="background-color: var(--slate-50);"> */
+body.patient-page-bg {
+    background-color: var(--slate-50);
+}
+
+/* Avatar / initial-circle color variants shared across pages */
+.avatar-blue   { background-color: #3b82f6; }
+.avatar-purple { background-color: #8b4fe0; }
+.avatar-teal   { background-color: #14b8a6; }

@@ -1,0 +1,249 @@
+/* ==========================================================================
+   My Appointments Page (my_appointment.php)
+   Depends on: ../Layout/style.css, style.css (shared patient styles)
+   ========================================================================== */
+
+/* Stats summary grid */
+.apt-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.apt-stat-card {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 24px 20px;
+    text-align: center;
+}
+
+.apt-stat-card.blue  { background-color: #eff6ff; border-color: #bfdbfe; }
+.apt-stat-card.green { background-color: #f0fdf4; border-color: #bbf7d0; }
+.apt-stat-card.orange { background-color: #fef3c7; border-color: #fcd34d; }
+.apt-stat-card.red   { background-color: #fef2f2; border-color: #fecaca; }
+
+.apt-stat-number {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--slate-900);
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.apt-stat-number.blue  { color: #2563eb; }
+.apt-stat-number.green { color: #16a34a; }
+.apt-stat-number.orange { color: #b45309; }
+.apt-stat-number.red   { color: #dc2626; }
+
+.apt-stat-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--slate-400);
+}
+
+.apt-stat-label.blue  { color: #2563eb; }
+.apt-stat-label.green { color: #16a34a; }
+.apt-stat-label.orange { color: #b45309; }
+.apt-stat-label.red   { color: #dc2626; }
+
+/* Search + filter bar */
+.apt-filter-card {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.apt-search-wrapper {
+    position: relative;
+    flex: 1;
+}
+
+.apt-search-wrapper i {
+    position: absolute;
+    left: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--slate-400);
+    font-size: 14px;
+}
+
+.apt-search-wrapper .doctor-search-input {
+    width: 100%;
+    padding: 10px 14px 10px 36px;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--slate-700);
+    background: var(--slate-50);
+}
+
+.apt-filter-tabs {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.apt-filter-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--white);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--slate-600);
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.apt-filter-btn:hover {
+    background: var(--slate-50);
+    color: var(--primary-blue);
+}
+
+.apt-filter-btn.active {
+    background: var(--primary-blue);
+    border-color: var(--primary-blue);
+    color: var(--white);
+}
+
+/* Appointment list */
+.apt-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.apt-row {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.apt-row-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.apt-row-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.apt-doctor-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--slate-900);
+}
+
+.apt-doctor-sub {
+    font-size: 13px;
+    color: var(--slate-400);
+}
+
+.apt-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--slate-500);
+}
+
+.apt-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.apt-meta i {
+    font-size: 12px;
+    color: var(--slate-400);
+}
+
+.apt-fee {
+    font-weight: 700;
+    color: var(--slate-800);
+}
+
+/* Right side: badge + action buttons */
+.apt-row-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+/* Status badges */
+.apt-badge {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.apt-badge.upcoming { background: #eff6ff; color: #2563eb; }
+.apt-badge.pending    { background: #fef9c3; color: #ca8a04; }
+.apt-badge.completed  { background: #dcfce7; color: #16a34a;  }
+.apt-badge.expired    { background: #fef3c7; color: #92400e; }
+.apt-badge.cancelled  { background: #fee2e2; color: #dc2626; }
+
+/* Action buttons */
+.apt-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--white);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.apt-action-btn.reschedule {
+    color: var(--primary-blue);
+    border-color: #bfdbfe;
+}
+
+.apt-action-btn.reschedule:hover {
+    background: #eff6ff;
+}
+
+.apt-action-btn.cancel {
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.apt-action-btn.cancel:hover {
+    background: #fef2f2;
+}
+
+/* Avatar color used only on this page (Dr. James Wilson) */
+.avatar-orange { background-color: #f59e0b; }
+
+/* Larger variant of .doctor-initial-circle used in the appointment list rows */
+.doctor-initial-circle.lg {
+    width: 48px;
+    height: 48px;
+    font-size: 15px;
+}

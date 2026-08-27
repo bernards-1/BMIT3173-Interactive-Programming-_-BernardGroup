@@ -1,0 +1,380 @@
+/* ==========================================================================
+   Medical Records Page (medical_records.php)
+   ========================================================================== */
+
+.mr-page-header {
+    margin-bottom: 28px;
+}
+
+.mr-page-header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--slate-900);
+    margin: 0 0 4px;
+}
+
+.mr-page-header p {
+    font-size: 14px;
+    color: var(--slate-400);
+    margin: 0;
+}
+
+/* Two-column layout */
+.mr-layout {
+    display: grid;
+    grid-template-columns: 2.2fr 1.1fr;
+    gap: 24px;
+    align-items: start;
+}
+
+/* Tab bar */
+.mr-tabs {
+    display: grid;
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 6px;
+    margin-bottom: 20px;
+}
+
+.mr-tab {
+    text-align: center;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--slate-500);
+    border-radius: 7px;
+    text-decoration: none;
+}
+
+/* ── TIMELINE tab ── */
+.timeline-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.timeline-card {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 22px 24px;
+    display: flex;
+    gap: 18px;
+}
+
+/* Left icon + vertical line */
+.timeline-icon-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+}
+
+.timeline-icon {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--white);
+    flex-shrink: 0;
+}
+
+.timeline-icon.teal   { background-color: #14b8a6; }
+.timeline-icon.blue   { background-color: #3b82f6; }
+.timeline-icon.purple { background-color: #8b5cf6; }
+
+.timeline-line {
+    width: 2px;
+    flex: 1;
+    background-color: var(--border-color);
+    margin-top: 8px;
+}
+
+/* Card body */
+.timeline-body {
+    flex: 1;
+}
+
+.timeline-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+}
+
+.timeline-card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--slate-900);
+}
+
+.timeline-card-doctor {
+    font-size: 13px;
+    color: var(--slate-400);
+    margin-top: 1px;
+}
+
+.timeline-date-badge {
+    font-size: 12.5px;
+    color: var(--slate-500);
+    background-color: var(--slate-50);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+
+.timeline-field-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--slate-700);
+    margin: 14px 0 3px;
+}
+
+.timeline-field-value {
+    font-size: 13.5px;
+    color: var(--slate-600);
+    line-height: 1.6;
+}
+
+/* Prescription pill row */
+.timeline-rx-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 4px;
+    font-size: 13.5px;
+    color: var(--slate-600);
+}
+
+.timeline-rx-row i {
+    color: #8b5cf6;
+    font-size: 12px;
+}
+
+/* Document buttons */
+.timeline-doc-btns {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.doc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--white);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--slate-700);
+    cursor: pointer;
+    text-decoration: none;
+    transition: var(--transition);
+}
+
+.doc-btn i {
+    color: var(--slate-400);
+    font-size: 13px;
+}
+
+.doc-btn:hover {
+    background: var(--slate-50);
+    border-color: var(--primary-blue);
+    color: var(--primary-blue);
+}
+
+.doc-btn:hover i { color: var(--primary-blue); }
+
+/* ── DOCUMENTS tab ── */
+.docs-card {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 24px;
+}
+
+.docs-card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--slate-900);
+    margin-bottom: 18px;
+}
+
+.doc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.doc-row:last-child { border-bottom: none; }
+
+.doc-row-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.doc-row-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: #eff6ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary-blue);
+    font-size: 15px;
+}
+
+.doc-row-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--slate-900);
+}
+
+.doc-row-meta {
+    font-size: 12px;
+    color: var(--slate-400);
+    margin-top: 2px;
+}
+
+.doc-download-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--slate-500);
+    cursor: pointer;
+    transition: var(--transition);
+    text-decoration: none;
+}
+
+.doc-download-btn:hover {
+    background: var(--slate-50);
+    color: var(--primary-blue);
+    border-color: var(--primary-blue);
+}
+
+/* ── RIGHT SIDEBAR ── */
+.mr-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: 90px;
+}
+
+.sidebar-card {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.sidebar-card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--slate-900);
+    margin-bottom: 16px;
+}
+
+.sidebar-field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--slate-400);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 8px;
+}
+
+.sidebar-field-label + * {
+    margin-bottom: 14px;
+}
+
+/* Blood type badge */
+.blood-type-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 6px;
+    border: 1px solid #fca5a5;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
+
+/* Allergy tags */
+.tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.tag {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid #fed7aa;
+    background: #fff7ed;
+    color: #c2410c;
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.tag.condition {
+    border-color: var(--border-color);
+    background: var(--slate-50);
+    color: var(--slate-700);
+}
+
+/* Medication rows */
+.med-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: #eff6ff;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.med-row:last-child { margin-bottom: 0; }
+
+.med-row i {
+    color: var(--primary-blue);
+    font-size: 14px;
+    margin-top: 2px;
+}
+
+.med-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--slate-900);
+}
+
+.med-detail {
+    font-size: 12.5px;
+    color: var(--slate-500);
+    margin-top: 2px;
+}
+
+/* Tab panels */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
