@@ -39,4 +39,14 @@ class DoctorController {
         $this->checkDoctorAuth();
         require_once 'Views/Doctor/Patient_medicalRecords.php';
     }
+
+    public function updateProfile($userId, $doctorId, $data) {
+        $this->checkDoctorAuth();
+        if (empty($data['name']) || empty($data['specialization']) || empty($data['qualification']) || empty($data['phone']) || empty($data['email']) || empty($data['initials']) || empty($data['color'])) {
+            throw new Exception('Please fill in all required fields.');
+        }
+        require_once __DIR__ . '/../Models/Doctor.php';
+        return Doctor::updateProfile($userId, $doctorId, $data);
+    }
 }
+

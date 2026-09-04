@@ -1,6 +1,7 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/PatientRepository.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -11,9 +12,8 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'patient') {
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT patient_id, full_name FROM patients WHERE user_id = ?");
-$stmt->execute([$_SESSION['user']['user_id']]);
-$patient = $stmt->fetch();
+$patientRepository = new PatientRepository($pdo);
+$patient = $patientRepository->getPatientByUserId($_SESSION['user']['user_id']);
 $patient_id = $patient['patient_id'] ?? null;
 $patient_name = $patient['full_name'] ?? 'Patient';
 
@@ -42,43 +42,21 @@ $upcoming_count = 0;
 
 if ($patient_id) {
     // First, fetch all active Scheduled appointments to update expired ones
-    $raw_stmt = $pdo->prepare("SELECT appointment_id, appointment_date, status FROM appointments WHERE patient_id = ? AND status = 'Scheduled'");
-    $raw_stmt->execute([$patient_id]);
-    $raw_apts = $raw_stmt->fetchAll();
+    $raw_apts = $patientRepository->getScheduledAppointmentsRaw($patient_id);
     foreach ($raw_apts as $r_apt) {
         checkAndMarkExpired($pdo, $r_apt['appointment_id'], $r_apt['appointment_date'], $r_apt['status']);
     }
 
-    $stmt = $pdo->prepare("
-        SELECT a.*, d.name AS doctor_name, d.specialization, d.initials, d.color
-        FROM appointments a
-        JOIN doctors d ON a.doctor_id = d.doctor_id
-        WHERE a.patient_id = ? AND a.status = 'Scheduled'
-        ORDER BY a.appointment_date ASC, a.appointment_time ASC
-    ");
-    $stmt->execute([$patient_id]);
-    $upcoming_appointments = $stmt->fetchAll();
+    $upcoming_appointments = $patientRepository->getUpcomingAppointments($patient_id);
     $upcoming_count = count($upcoming_appointments);
-    
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE patient_id = ? AND status = 'Completed'");
-    $stmt->execute([$patient_id]);
-    $total_visits = $stmt->fetchColumn();
+
+    $total_visits = $patientRepository->countCompletedAppointments($patient_id);
 }
 
 // Fetch recent medical records (up to 3)
 $recent_records = [];
 if ($patient_id) {
-    $rec_stmt = $pdo->prepare("
-        SELECT mr.diagnosis, mr.symptoms, mr.follow_up_date, mr.created_at,
-               d.name AS doctor_name, d.specialization, d.initials, d.color
-        FROM medical_records mr
-        JOIN doctors d ON mr.doctor_id = d.doctor_id
-        WHERE mr.patient_id = ?
-        ORDER BY mr.created_at DESC
-        LIMIT 3
-    ");
-    $rec_stmt->execute([$patient_id]);
-    $recent_records = $rec_stmt->fetchAll();
+    $recent_records = $patientRepository->getRecentMedicalRecords($patient_id, 3);
 }
 
 $next_apt_text = "No upcoming appointments scheduled.";
@@ -117,7 +95,7 @@ if ($upcoming_count > 0) {
                 <i class="fa-regular fa-circle-check" style="color: #59FF1A;"></i> <?= (int)$total_visits ?> Total Visits
             </a>
             <a href="my_appointment.php" class="btn-banner-outline">
-                <i class="fa-regular fa-calendar"></i> <?= (int)$upcoming_count ?> Upcoming
+                <i class="fa-regular fa-calendar"></i> <span id="bannerUpcomingCount"><?= (int)$upcoming_count ?></span> Upcoming
             </a>
             <a href="prescriptions.php" class="btn-banner-outline">
                 <i class="fa-solid fa-capsules"></i> Prescriptions
@@ -181,7 +159,7 @@ if ($upcoming_count > 0) {
     <div class="schedule-list-header">
         <div>
             <h2 class="schedule-list-title">Upcoming Appointments</h2>
-            <p class="schedule-list-subtitle"><?= (int)$upcoming_count ?> scheduled</p>
+            <p class="schedule-list-subtitle"><span id="sectionUpcomingCount"><?= (int)$upcoming_count ?> scheduled</span></p>
         </div>
         <a href="my_appointment.php" class="view-all-link">
             View all
@@ -196,7 +174,7 @@ if ($upcoming_count > 0) {
                 $date_display = date("M j, Y", strtotime($apt['appointment_date']));
                 $time_display = date("g:i A", strtotime($apt['appointment_time']));
                 ?>
-                <div class="schedule-row-item">
+                <div class="schedule-row-item" id="apt-item-<?= e($apt['appointment_id']) ?>">
                     <div class="schedule-doctor-info">
                         <div class="doctor-initial-circle" style="background-color: <?= e($apt['color']) ?>; color: #ffffff; display: flex; align-items: center; justify-content: center; font-weight: bold;">
                             <?= e($apt['initials']) ?>

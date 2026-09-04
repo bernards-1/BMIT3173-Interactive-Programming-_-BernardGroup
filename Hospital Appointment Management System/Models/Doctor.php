@@ -82,4 +82,54 @@ class Doctor {
         }
         return false;
     }
+
+    public static function updateProfile($userId, $doctorId, $data) {
+        global $pdo;
+        try {
+            $pdo->beginTransaction();
+            
+            $name = $data['name'];
+            $specialization = $data['specialization'];
+            $qualification = $data['qualification'];
+            $phone = $data['phone'];
+            $email = $data['email'];
+            $consultation_fee = floatval($data['consultation_fee']);
+            $initials = $data['initials'];
+            $color = $data['color'];
+            $ic = $data['ic'];
+            
+            // Keep username exactly as name (including spaces)
+            $username = $name;
+            
+            // Check if username already exists for other users
+            $chk_user = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ? AND user_id != ?");
+            $chk_user->execute([$username, $userId]);
+            if ($chk_user->fetchColumn() > 0) {
+                $username .= ' ' . rand(100, 999);
+            }
+
+            // Update users table (email and username)
+            $upd_user = $pdo->prepare("UPDATE users SET email = ?, username = ? WHERE user_id = ?");
+            $upd_user->execute([$email, $username, $userId]);
+            
+            // Update doctors table
+            $upd_doc = $pdo->prepare("
+                UPDATE doctors 
+                SET name = ?, specialization = ?, qualification = ?, phone = ?, email = ?, consultation_fee = ?, initials = ?, color = ?, ic = ?
+                WHERE doctor_id = ?
+            ");
+            $upd_doc->execute([$name, $specialization, $qualification, $phone, $email, $consultation_fee, $initials, $color, $ic, $doctorId]);
+            
+            $pdo->commit();
+            
+            return [
+                'success' => true,
+                'username' => $username
+            ];
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+    }
 }
+

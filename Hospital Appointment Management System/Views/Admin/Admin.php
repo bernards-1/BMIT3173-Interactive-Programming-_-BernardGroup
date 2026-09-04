@@ -1,9 +1,17 @@
 <?php
 require_once '../../db.php';
 require_once '../../Controllers/AdminController.php';
+require_once '../../services/PharmacyConsumerService.php';
 
 $controller = new AdminController();
 $data = $controller->dashboard();
+
+// Inter-Module Consumption: Admin consumes Pharmacy Module inventory alerts
+$pharmacyService = new PharmacyConsumerService();
+$pharmacyAlertResult = $pharmacyService->getInventoryAlerts(10);
+$lowStockAlerts = ($pharmacyAlertResult['status'] === 'success' && isset($pharmacyAlertResult['data']['data'])) 
+    ? $pharmacyAlertResult['data']['data'] 
+    : [];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -348,6 +356,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="stat-right">
                     <a href="patients.php" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px;">Manage</a>
                 </div>
+            </div>
+
+            <!-- Inter-Module Service Consumer: Pharmacy Stock Alert Widget -->
+            <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <div style="font-size:13px;font-weight:600;color:var(--text-main);display:flex;align-items:center;gap:6px;">
+                        <i class="fa-solid fa-pills" style="color:#ef4444;"></i>
+                        <span>Pharmacy Low Stock (Inter-Module Feed)</span>
+                    </div>
+                    <span style="font-size:11px;background:#f1f5f9;padding:2px 8px;border-radius:6px;color:#64748b;">
+                        HTTP <?= $pharmacyAlertResult['httpCode'] ?? 200 ?>
+                    </span>
+                </div>
+                <?php if (!empty($lowStockAlerts)): ?>
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                        <?php foreach (array_slice($lowStockAlerts, 0, 3) as $med): ?>
+                        <div style="display:flex;justify-content:space-between;font-size:12px;background:#fff5f5;padding:6px 10px;border-radius:6px;border:1px solid #fee2e2;">
+                            <span style="font-weight:500;color:#991b1b;"><?= e($med['brand_name'] ?? 'Medicine') ?></span>
+                            <span style="font-weight:700;color:#ef4444;">Stock: <?= (int)($med['stock_quantity'] ?? 0) ?></span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div style="font-size:12px;color:#10b981;background:#f0fdf4;padding:6px 10px;border-radius:6px;border:1px solid #dcfce7;">
+                        <i class="fa-solid fa-check"></i> All pharmacy stock levels normal (> 10 units)
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>

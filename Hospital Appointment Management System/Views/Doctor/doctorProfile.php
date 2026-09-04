@@ -1,6 +1,7 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Controllers/DoctorController.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -52,35 +53,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($name) || empty($specialization) || empty($qualification) || empty($phone) || empty($email) || empty($initials) || empty($color)) {
             $error = 'Please fill in all required fields.';
         } else {
-            $pdo->beginTransaction();
             try {
-                // Keep username exactly as name (including spaces)
-                $username = $name;
-                
-                // Check if username already exists for other users
-                $chk_user = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ? AND user_id != ?");
-                $chk_user->execute([$username, $id]);
-                if ($chk_user->fetchColumn() > 0) {
-                    $username .= ' ' . rand(100, 999);
-                }
-
-                // Update users table (email and username)
-                $upd_user = $pdo->prepare("UPDATE users SET email = ?, username = ? WHERE user_id = ?");
-                $upd_user->execute([$email, $username, $id]);
-                
-                // Update doctors table
-                $upd_doc = $pdo->prepare("
-                    UPDATE doctors 
-                    SET name = ?, specialization = ?, qualification = ?, phone = ?, email = ?, consultation_fee = ?, initials = ?, color = ?, ic = ?
-                    WHERE doctor_id = ?
-                ");
-                $upd_doc->execute([$name, $specialization, $qualification, $phone, $email, $consultation_fee, $initials, $color, $ic, $doctor_id]);
-                
-                $pdo->commit();
+                $controller = new DoctorController();
+                $update_data = [
+                    'name' => $name,
+                    'specialization' => $specialization,
+                    'qualification' => $qualification,
+                    'phone' => $phone,
+                    'email' => $email,
+                    'consultation_fee' => $consultation_fee,
+                    'initials' => $initials,
+                    'color' => $color,
+                    'ic' => $ic
+                ];
+                $result = $controller->updateProfile($id, $doctor_id, $update_data);
                 
                 // Update Session values
                 $_SESSION['user']['email'] = $email;
-                $_SESSION['user']['username'] = $username;
+                $_SESSION['user']['username'] = $result['username'];
                 
                 // Refresh data
                 $doctor_stmt->execute([$id]);
@@ -88,7 +78,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $success = 'Profile details updated successfully!';
             } catch (Exception $e) {
-                $pdo->rollBack();
                 $error = 'Failed to update profile: ' . $e->getMessage();
             }
         }

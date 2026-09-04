@@ -24,7 +24,16 @@ class MedicineStockHandler implements StockSubject {
         return self::$instance;
     }
 
+    public function clearObservers(): void {
+        $this->observers = [];
+    }
+
     public function attach(StockObserver $observer): void {
+        foreach ($this->observers as $obs) {
+            if (get_class($obs) === get_class($observer)) {
+                return; // Prevent duplicate observer registration
+            }
+        }
         $this->observers[] = $observer;
     }
 
@@ -44,28 +53,37 @@ class MedicineStockHandler implements StockSubject {
     }
 
     /**
-     * Deduct stock of a medicine and notify observers.
+     * Deduct stock of a medicine using Pessimistic Concurrency Locking and notify observers.
+     * Enforces non-negative stock by throwing an Exception if stock is insufficient,
+     * triggering atomic database rollback.
      */
     public function deductStock(string $medicineId, int $deductQuantity): void {
         global $pdo;
 
-        // Fetch current stock, minimum stock, and name
-        $stmt = $pdo->prepare("SELECT stock_quantity, minimum_stock, brand_name FROM medicines WHERE medicine_id = ?");
+        // Fetch current stock with Pessimistic Concurrency Locking (FOR UPDATE)
+        $stmt = $pdo->prepare("SELECT stock_quantity, minimum_stock, brand_name FROM medicines WHERE medicine_id = ? FOR UPDATE");
         $stmt->execute([$medicineId]);
         $med = $stmt->fetch();
 
-        if ($med) {
-            $newStock = max((int)$med['stock_quantity'] - $deductQuantity, 0);
-            $minStock = (int)$med['minimum_stock'];
-            $brandName = $med['brand_name'];
-
-            // Perform SQL update query
-            $update = $pdo->prepare("UPDATE medicines SET stock_quantity = ? WHERE medicine_id = ?");
-            $update->execute([$newStock, $medicineId]);
-
-            // Notify observers of stock change
-            $this->notify($brandName . " (ID: " . $medicineId . ")", $newStock, $minStock);
+        if (!$med) {
+            throw new Exception("Medicine ID {$medicineId} not found in inventory.");
         }
+
+        $currentStock = (int)$med['stock_quantity'];
+        if ($currentStock < $deductQuantity) {
+            throw new Exception("Insufficient stock for medicine {$med['brand_name']} (ID: {$medicineId}). Requested: {$deductQuantity}, Available: {$currentStock}.");
+        }
+
+        $newStock = $currentStock - $deductQuantity;
+        $minStock = (int)$med['minimum_stock'];
+        $brandName = $med['brand_name'];
+
+        // Perform SQL update query
+        $update = $pdo->prepare("UPDATE medicines SET stock_quantity = ? WHERE medicine_id = ?");
+        $update->execute([$newStock, $medicineId]);
+
+        // Notify observers of stock change
+        $this->notify($brandName . " (ID: " . $medicineId . ")", $newStock, $minStock);
     }
 }
 

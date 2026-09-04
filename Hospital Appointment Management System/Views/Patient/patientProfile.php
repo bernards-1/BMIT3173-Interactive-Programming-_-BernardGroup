@@ -1,6 +1,7 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/PatientRepository.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -19,10 +20,10 @@ if (!function_exists('e')) {
 }
 $id = $_SESSION['user']['user_id'];
 
+$patientRepository = new PatientRepository($pdo);
+
 // Fetch patient details
-$patient_stmt = $pdo->prepare('SELECT p.*, u.email AS user_email FROM patients p JOIN users u ON p.user_id = u.user_id WHERE p.user_id = ?');
-$patient_stmt->execute([$id]);
-$patient = $patient_stmt->fetch();
+$patient = $patientRepository->getPatientByUserId($id);
 
 if (!$patient) {
     die("Patient profile not found.");
@@ -52,33 +53,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($full_name) || empty($date_of_birth) || empty($gender) || empty($phone) || empty($email)) {
             $error = 'Please fill in all required fields.';
         } else {
-            $pdo->beginTransaction();
             try {
-                // Update users table (email)
-                $upd_user = $pdo->prepare("UPDATE users SET email = ? WHERE user_id = ?");
-                $upd_user->execute([$email, $id]);
-
-                // Update patients table
-                $upd_patient = $pdo->prepare("
-                    UPDATE patients
-                    SET full_name = ?, ic = ?, date_of_birth = ?, gender = ?, phone = ?, blood_type = ?, address = ?, emergency_contact_name = ?, emergency_contact_phone = ?
-                    WHERE patient_id = ?
-                ");
-                $upd_patient->execute([$full_name, $ic, $date_of_birth, $gender, $phone, $blood_type, $address, $emergency_contact_name, $emergency_contact_phone, $patient_id]);
-
-                $pdo->commit();
+                $profileData = [
+                    'full_name' => $full_name,
+                    'ic' => $ic,
+                    'date_of_birth' => $date_of_birth,
+                    'gender' => $gender,
+                    'phone' => $phone,
+                    'email' => $email,
+                    'blood_type' => $blood_type,
+                    'address' => $address,
+                    'emergency_contact_name' => $emergency_contact_name,
+                    'emergency_contact_phone' => $emergency_contact_phone,
+                ];
+                $patientRepository->updatePatientProfile($id, $patient_id, $profileData);
 
                 // Update session values
                 $_SESSION['user']['email'] = $email;
                 $_SESSION['user']['username'] = $full_name;
 
                 // Refresh data
-                $patient_stmt->execute([$id]);
-                $patient = $patient_stmt->fetch();
+                $patient = $patientRepository->getPatientByUserId($id);
 
                 $success = 'Profile details updated successfully!';
             } catch (Exception $e) {
-                $pdo->rollBack();
                 $error = 'Failed to update profile: ' . $e->getMessage();
             }
         }
@@ -93,14 +91,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'New password and confirm password do not match.';
         } else {
             // Fetch current password hash from users
-            $user_stmt = $pdo->prepare("SELECT password FROM users WHERE user_id = ?");
-            $user_stmt->execute([$id]);
-            $hash = $user_stmt->fetchColumn();
+            $hash = $patientRepository->getPasswordHash($id);
 
             if ($hash && password_verify($current_pwd, $hash)) {
                 $new_hash = password_hash($new_pwd, PASSWORD_DEFAULT);
-                $upd_pwd = $pdo->prepare("UPDATE users SET password = ? WHERE user_id = ?");
-                $upd_pwd->execute([$new_hash, $id]);
+                $patientRepository->updatePassword($id, $new_hash);
                 $success = 'Password changed successfully!';
             } else {
                 $error = 'Incorrect current password.';
@@ -115,17 +110,9 @@ $total_visits = 0;
 $total_records = 0;
 
 if ($patient_id) {
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE patient_id = ?");
-    $stmt->execute([$patient_id]);
-    $total_appointments = $stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE patient_id = ? AND status = 'Completed'");
-    $stmt->execute([$patient_id]);
-    $total_visits = $stmt->fetchColumn();
-
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM medical_records WHERE patient_id = ?");
-    $stmt->execute([$patient_id]);
-    $total_records = $stmt->fetchColumn();
+    $total_appointments = $patientRepository->countAppointments($patient_id);
+    $total_visits = $patientRepository->countCompletedAppointments($patient_id);
+    $total_records = $patientRepository->countMedicalRecords($patient_id);
 }
 ?>
 <!DOCTYPE html>

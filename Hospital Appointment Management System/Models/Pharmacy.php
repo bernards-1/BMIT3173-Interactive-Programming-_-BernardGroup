@@ -291,6 +291,7 @@ class Pharmacy {
             // Setup Observer Pattern for Stock Alerts
             require_once __DIR__ . '/StockObserver.php';
             $stockHandler = MedicineStockHandler::getInstance();
+            $stockHandler->clearObservers(); // Prevent duplicate observer accumulation on Singleton
             StockWarningRegistry::clearWarnings(); // Reset warnings for this transaction
             $stockHandler->attach(new LowStockAlertNotifier());
 

@@ -1,39 +1,29 @@
 <?php
 // Controllers/AdminController.php
+require_once __DIR__ . '/../core/SecuritySession.php';
+require_once __DIR__ . '/../Facades/AdminFacade.php';
 require_once __DIR__ . '/../Models/Doctor.php';
 require_once __DIR__ . '/../Models/Patient.php';
 require_once __DIR__ . '/../Models/Appointment.php';
 require_once __DIR__ . '/../Models/Payment.php';
 
 class AdminController {
+    private $facade;
+
+    public function __construct(AdminFacade $facade = null) {
+        global $pdo;
+        $this->facade = $facade ?: new AdminFacade($pdo);
+    }
     
     private function checkAdminAuth() {
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
-        if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
-            header('Location: ../Login/login.php');
-            exit;
-        }
+        SecuritySession::checkAdminAuth();
     }
 
     public function dashboard() {
         $this->checkAdminAuth();
         
-        $totalPatients = Patient::getTotalCount();
-        $activeDoctors = Doctor::getTotalCount();
-        $todayAppointments = Appointment::getTodayCount();
-        $monthlyRevenue = Payment::getMonthlyRevenue();
-        
-        $recentAppointments = Appointment::getRecentAppointments(5);
-        
-        return [
-            'totalPatients' => $totalPatients,
-            'activeDoctors' => $activeDoctors,
-            'todayAppointments' => $todayAppointments,
-            'monthlyRevenue' => $monthlyRevenue,
-            'recentAppointments' => $recentAppointments
-        ];
+        // Client-to-Facade delegation: The controller simply delegates to the Facade
+        return $this->facade->getDashboardOverview();
     }
 
     public function doctors() {
@@ -377,32 +367,22 @@ class AdminController {
         $this->checkAdminAuth();
         global $pdo;
 
-        // Handle approve / reject actions
+        // Handle approve / reject actions via Facade delegation
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if ($_POST['action'] === 'approve_leave' && !empty($_POST['leave_id'])) {
-                $stmt = $pdo->prepare("UPDATE doctor_leaves SET status = 'Approved' WHERE leave_id = ?");
-                $stmt->execute([$_POST['leave_id']]);
+                $this->facade->processLeaveRequest($_POST['leave_id'], 'Approved');
                 header('Location: leave_requests.php?success=Approved');
                 exit;
             }
             if ($_POST['action'] === 'reject_leave' && !empty($_POST['leave_id'])) {
-                $stmt = $pdo->prepare("UPDATE doctor_leaves SET status = 'Rejected', reject_reason = ? WHERE leave_id = ?");
-                $stmt->execute([trim($_POST['reject_reason']), $_POST['leave_id']]);
+                $this->facade->processLeaveRequest($_POST['leave_id'], 'Rejected', trim($_POST['reject_reason']));
                 header('Location: leave_requests.php?success=Rejected');
                 exit;
             }
         }
 
-        // Fetch all leaves with doctor name
-        $stmt = $pdo->query("
-            SELECT dl.*, d.name AS doctor_name
-            FROM doctor_leaves dl
-            JOIN doctors d ON dl.doctor_id = d.doctor_id
-            ORDER BY 
-                CASE dl.status WHEN 'Pending' THEN 0 WHEN 'Approved' THEN 1 ELSE 2 END,
-                dl.created_at DESC
-        ");
-        $leaves = $stmt->fetchAll();
+        // Fetch leaves via Facade delegation
+        $leaves = $this->facade->getLeaveApplications();
 
         // Stats
         $stats = ['pending' => 0, 'approved' => 0, 'rejected' => 0];

@@ -1,6 +1,7 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/PatientRepository.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -14,9 +15,8 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'patient') {
 // Debug: Check current session
 error_log('Patient session: ' . json_encode($_SESSION['user']));
 
-$stmt = $pdo->prepare("SELECT patient_id, full_name FROM patients WHERE user_id = ?");
-$stmt->execute([$_SESSION['user']['user_id']]);
-$patient = $stmt->fetch();
+$patientRepository = new PatientRepository($pdo);
+$patient = $patientRepository->getPatientByUserId($_SESSION['user']['user_id']);
 $patient_id = $patient['patient_id'] ?? null;
 $patient_name = $patient['full_name'] ?? 'Patient';
 
@@ -25,17 +25,7 @@ error_log('Patient lookup result: ' . json_encode($patient));
 
 $appointments = [];
 if ($patient_id) {
-    $stmt = $pdo->prepare("
-        SELECT a.*, d.name AS doctor_name, d.specialization, d.initials, d.color, d.consultation_fee,
-               pay.amount AS payment_amount
-        FROM appointments a
-        JOIN doctors d ON a.doctor_id = d.doctor_id
-        LEFT JOIN payments pay ON pay.appointment_id = a.appointment_id
-        WHERE a.patient_id = ?
-        ORDER BY a.appointment_date ASC, a.appointment_time ASC
-    ");
-    $stmt->execute([$patient_id]);
-    $appointments = $stmt->fetchAll();
+    $appointments = $patientRepository->getAppointmentsByPatientId($patient_id);
     
     // Debug: Check appointment query
     error_log('Appointments found for ' . $patient_id . ': ' . count($appointments));
@@ -130,7 +120,7 @@ foreach ($appointments as $apt) {
     <!-- Stats Summary Cards -->
     <div class="apt-stats-grid">
         <div class="apt-stat-card blue">
-            <div class="apt-stat-number blue"><?= $scheduled_count ?></div>
+            <div class="apt-stat-number blue" id="statScheduledCount"><?= $scheduled_count ?></div>
             <div class="apt-stat-label blue">Upcoming</div>
         </div>
         <div class="apt-stat-card green">
@@ -142,7 +132,7 @@ foreach ($appointments as $apt) {
             <div class="apt-stat-label orange">Expired</div>
         </div>
         <div class="apt-stat-card red">
-            <div class="apt-stat-number red"><?= $cancelled_count ?></div>
+            <div class="apt-stat-number red" id="statCancelledCount"><?= $cancelled_count ?></div>
             <div class="apt-stat-label red">Cancelled</div>
         </div>
     </div>
@@ -174,7 +164,7 @@ foreach ($appointments as $apt) {
                 $date_display = date("M j, Y", strtotime($apt['appointment_date']));
                 $formatted_time = date("g:i A", strtotime($apt['appointment_time']));
                 ?>
-                <div class="apt-row" data-status="<?= e($apt['status']) ?>" data-doctor="<?= e(strtolower($apt['doctor_name'])) ?>" data-specialty="<?= e(strtolower($apt['specialization'])) ?>">
+                <div class="apt-row" id="apt-row-<?= e($apt['appointment_id']) ?>" data-status="<?= e($apt['status']) ?>" data-doctor="<?= e(strtolower($apt['doctor_name'])) ?>" data-specialty="<?= e(strtolower($apt['specialization'])) ?>">
                     <div class="apt-row-left">
                         <div class="doctor-initial-circle lg" style="background-color: <?= e($apt['color']) ?>; color: #ffffff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">
                             <?= e($apt['initials']) ?>

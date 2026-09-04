@@ -106,7 +106,9 @@ if (strpos($script, '/Hospital Appointment Management System') !== false) {
         $base_dir = '/' . $parts[0];
     }
 }
-$api_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $host . $base_dir . '/api/medicines.php';
+$req_id = 'REQ_DOC_MAIN_' . rand(1000, 9999);
+$req_ts = date('Y-m-d H:i:s');
+$api_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $host . $base_dir . '/api/medicines.php?requestID=' . urlencode($req_id) . '&timestamp=' . urlencode($req_ts);
 
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $api_url);
@@ -117,7 +119,7 @@ curl_close($ch);
 
 if ($api_response) {
     $api_data = json_decode($api_response, true);
-    if (isset($api_data['status']) && $api_data['status'] === 'success') {
+    if (isset($api_data['status']) && $api_data['status'] === 'S') {
         $medicines_list = $api_data['data'];
     }
 }

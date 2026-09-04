@@ -128,23 +128,27 @@ function sendUpdate(data, btnElement) {
     btnElement.innerText = 'Saving...';
     btnElement.disabled = true;
 
-    fetch('settings.php', {
+    // Inject CSRF token for state change protection
+    const csrfToken = '<?= $_SESSION['csrf_token'] ?? '' ?>';
+
+    fetch('../../api/admin_update_settings.php', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken
         },
         body: JSON.stringify(data)
     })
     .then(response => response.json())
     .then(result => {
-        if (result.success) {
+        if (result.status === 'success' || result.code === 200) {
             btnElement.innerText = 'Saved!';
             setTimeout(() => {
                 btnElement.innerText = originalText;
                 btnElement.disabled = false;
             }, 2000);
         } else {
-            alert('Failed to save settings.');
+            alert('Failed to save settings: ' + (result.message || 'Unknown error'));
             btnElement.innerText = originalText;
             btnElement.disabled = false;
         }

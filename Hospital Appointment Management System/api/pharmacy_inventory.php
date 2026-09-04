@@ -9,17 +9,39 @@ if (session_status() === PHP_SESSION_NONE) {
 
 header('Content-Type: application/json; charset=utf-8');
 
-// 1. Authorize pharmacist session
-if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'pharmacist') {
+// 1. Authorize pharmacist session OR Admin consumer header/session
+$isPharmacist = isset($_SESSION['user']) && $_SESSION['user']['role'] === 'pharmacist';
+$isAdmin = isset($_SESSION['user']) && $_SESSION['user']['role'] === 'admin';
+$consumerHeader = $_SERVER['HTTP_X_CONSUMER_MODULE'] ?? '';
+$isAuthorizedConsumer = ($isAdmin || $consumerHeader === 'AdminModule');
+
+if (!$isPharmacist && !$isAuthorizedConsumer) {
     http_response_code(401);
     echo json_encode([
         'status' => 'error',
-        'message' => 'Unauthorized access'
+        'code' => 401,
+        'message' => 'Unauthorized access: Pharmacist or AdminModule authorization required'
     ]);
     exit;
 }
 
 $method = $_SERVER['REQUEST_METHOD'];
+
+// Handle GET for Admin Consumer alerts
+if ($method === 'GET' && isset($_GET['action']) && $_GET['action'] === 'get_alerts') {
+    $threshold = (int)($_GET['threshold'] ?? 10);
+    $lowStock = Pharmacy::getLowStockMedicines();
+    http_response_code(200);
+    echo json_encode([
+        'status' => 'success',
+        'code' => 200,
+        'provider' => 'PharmacyModule',
+        'threshold' => $threshold,
+        'count' => count($lowStock),
+        'data' => $lowStock
+    ]);
+    exit;
+}
 $input = json_decode(file_get_contents('php://input'), true);
 
 try {

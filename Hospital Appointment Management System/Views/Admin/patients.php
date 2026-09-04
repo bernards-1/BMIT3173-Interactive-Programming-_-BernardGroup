@@ -175,6 +175,18 @@ $data = $controller->patients();
                     <span class="detail-label">Patient ID</span>
                     <span class="detail-value" id="v_patient_id">—</span>
                 </div>
+                <div class="detail-group">
+                    <span class="detail-label">Blood Type</span>
+                    <span class="detail-value" id="v_blood_type">—</span>
+                </div>
+                <div class="detail-group full">
+                    <span class="detail-label">Appointment Summary</span>
+                    <span class="detail-value" id="v_appt_summary">—</span>
+                </div>
+                <div class="detail-group full">
+                    <span class="detail-label">Recent Medical Records</span>
+                    <span class="detail-value" id="v_recent_records">—</span>
+                </div>
             </div>
         </div>
         <div class="modal-footer">
@@ -223,6 +235,59 @@ $data = $controller->patients();
         document.getElementById('v_gender').textContent     = p.gender       || '—';
         document.getElementById('v_patient_id').textContent = p.patient_id   || '—';
         document.getElementById('patientModal').style.display = 'flex';
+
+        loadPatientSummary(p.user_id);
+    }
+
+    function loadPatientSummary(userId) {
+        const bloodEl   = document.getElementById('v_blood_type');
+        const summaryEl = document.getElementById('v_appt_summary');
+        const recordsEl = document.getElementById('v_recent_records');
+        bloodEl.textContent = 'Loading...';
+        summaryEl.textContent = 'Loading...';
+        recordsEl.textContent = 'Loading...';
+
+        if (!userId) {
+            bloodEl.textContent = '—';
+            summaryEl.textContent = 'Unavailable — missing user reference.';
+            recordsEl.textContent = '—';
+            return;
+        }
+
+        const requestID = 'REQ-' + Date.now().toString(16);
+        const requestTimestamp = new Date().toISOString();
+        const url = `../../api/patient_summary.php?userId=${encodeURIComponent(userId)}`
+                  + `&requestID=${encodeURIComponent(requestID)}`
+                  + `&timestamp=${encodeURIComponent(requestTimestamp)}`;
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'S') {
+                    bloodEl.textContent = data.patientDetails.bloodType || 'Not on file';
+
+                    const counts = data.patientDetails.appointmentCounts || {};
+                    const countEntries = Object.entries(counts).filter(([, v]) => v > 0);
+                    summaryEl.textContent = countEntries.length
+                        ? countEntries.map(([k, v]) => `${k}: ${v}`).join(', ')
+                        : 'No appointments recorded yet.';
+
+                    const recs = data.patientDetails.recentRecords || [];
+                    recordsEl.textContent = recs.length
+                        ? recs.map(r => `${r.diagnosis} (${r.created_at})`).join('; ')
+                        : 'No medical records yet.';
+                } else {
+                    // F or E status — surfaces the web service's own error message
+                    bloodEl.textContent = '—';
+                    summaryEl.textContent = data.message || 'Patient summary unavailable.';
+                    recordsEl.textContent = '—';
+                }
+            })
+            .catch(() => {
+                bloodEl.textContent = '—';
+                summaryEl.textContent = 'Patient Module service unavailable. Please try again later.';
+                recordsEl.textContent = '—';
+            });
     }
 
     document.getElementById('patientModal').addEventListener('click', function(e) {

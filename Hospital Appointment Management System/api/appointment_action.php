@@ -110,6 +110,10 @@ if ($action === 'reschedule') {
         echo json_encode(['success' => false, 'message' => 'Appointment date cannot be in the past.']);
         exit;
     }
+    if ($new_date === $today && $new_time <= date('H:i:s')) {
+        echo json_encode(['success' => false, 'message' => 'Appointment time cannot be in the past.']);
+        exit;
+    }
     
     // 1. Validate doctor leave
     $leave_stmt = $pdo->prepare("SELECT COUNT(*) FROM doctor_leaves WHERE doctor_id = ? AND start_date <= ? AND end_date >= ? AND status = 'Approved'");

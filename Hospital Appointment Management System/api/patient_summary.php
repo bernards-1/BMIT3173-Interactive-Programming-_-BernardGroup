@@ -2,6 +2,7 @@
 // api/patient_summary.php
 // RESTful Web Service exposed by Patient Module to provide patient health & appointment summary
 require_once '../db.php';
+require_once '../Models/PatientRepository.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -11,28 +12,56 @@ $timestamp = date('c');
 
 try {
     $userId = $_GET['userId'] ?? null;
+    $requestID = $_GET['requestID'] ?? null;
     $requestTimestamp = $_GET['timestamp'] ?? null;
 
+    // Rule A: requestID is mandatory (request tracking)
+    if (!$requestID) {
+        http_response_code(400);
+        echo json_encode([
+            'status' => 'F',
+            'message' => 'Missing mandatory parameter: requestID',
+            'requestID' => 'N/A',
+            'timestamp' => $timestamp
+        ]);
+        exit;
+    }
+
+    // Rule B: timestamp is mandatory (request tracking)
+    if (!$requestTimestamp) {
+        http_response_code(400);
+        echo json_encode([
+            'status' => 'F',
+            'message' => 'Missing mandatory parameter: timestamp',
+            'requestID' => $requestID,
+            'timestamp' => $timestamp
+        ]);
+        exit;
+    }
+
+    // Rule C: userId is mandatory
     if (!$userId) {
         http_response_code(400);
         echo json_encode([
             'status' => 'F',
             'message' => 'Missing mandatory parameter: userId',
+            'requestID' => $requestID,
             'timestamp' => $timestamp
         ]);
         exit;
     }
 
     // Lookup patient
-    $stmt = $pdo->prepare("SELECT patient_id, full_name, date_of_birth, gender, blood_type, phone FROM patients WHERE user_id = ?");
-    $stmt->execute([$userId]);
-    $patient = $stmt->fetch(PDO::FETCH_ASSOC);
+    $patientRepository = new PatientRepository($pdo);
+    $patient = $patientRepository->getPatientByUserId($userId);
 
+    // Error case: userId does not correspond to any patient record
     if (!$patient) {
         http_response_code(404);
         echo json_encode([
             'status' => 'F',
             'message' => 'Patient record not found',
+            'requestID' => $requestID,
             'timestamp' => $timestamp
         ]);
         exit;
@@ -41,24 +70,23 @@ try {
     $patientId = $patient['patient_id'];
 
     // Appointments summary
-    $aptStmt = $pdo->prepare("SELECT status, COUNT(*) as count FROM appointments WHERE patient_id = ? GROUP BY status");
-    $aptStmt->execute([$patientId]);
-    $appointmentSummary = $aptStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+    $appointmentSummary = $patientRepository->getAppointmentStatusCounts($patientId);
 
     // Recent medical records
-    $recStmt = $pdo->prepare("
-        SELECT mr.medical_record_id, mr.diagnosis, mr.created_at, d.name as doctor_name
-        FROM medical_records mr
-        JOIN doctors d ON mr.doctor_id = d.doctor_id
-        WHERE mr.patient_id = ?
-        ORDER BY mr.created_at DESC LIMIT 3
-    ");
-    $recStmt->execute([$patientId]);
-    $recentRecords = $recStmt->fetchAll(PDO::FETCH_ASSOC);
+    $recentRecords = $patientRepository->getRecentMedicalRecordsForApi($patientId, 3);
+
+    // No-data case: patient exists but has no appointments and no medical records yet.
+    // This is still a successful lookup (status S) — the query was valid, the result is simply empty.
+    $hasAppointments = !empty(array_filter($appointmentSummary));
+    $hasRecords = !empty($recentRecords);
+    $message = ($hasAppointments || $hasRecords)
+        ? 'Patient summary retrieved successfully'
+        : 'Patient summary retrieved successfully — no appointment or medical record data found for this patient';
 
     echo json_encode([
         'status' => 'S',
-        'message' => 'Patient summary retrieved successfully',
+        'message' => $message,
+        'requestID' => $requestID,
         'patientDetails' => [
             'patientId' => $patient['patient_id'],
             'fullName' => $patient['full_name'],
@@ -74,6 +102,7 @@ try {
     echo json_encode([
         'status' => 'E',
         'message' => 'Internal server error: ' . $e->getMessage(),
+        'requestID' => isset($requestID) ? $requestID : 'N/A',
         'timestamp' => $timestamp
     ]);
 }

@@ -1,6 +1,7 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/PatientRepository.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -18,35 +19,17 @@ if (!function_exists('e')) {
     }
 }
 
+$patientRepository = new PatientRepository($pdo);
+
 // Get patient_id from session
 $user_id = $_SESSION['user']['user_id'] ?? null;
-$stmt = $pdo->prepare('SELECT patient_id FROM patients WHERE user_id = ?');
-$stmt->execute([$user_id]);
-$patient = $stmt->fetch();
+$patient = $user_id ? $patientRepository->getPatientByUserId($user_id) : null;
 $patient_id = $patient ? $patient['patient_id'] : null;
 
 // Fetch all medical records created by doctors for this patient
 $records = [];
 if ($patient_id) {
-    $rec_stmt = $pdo->prepare('
-        SELECT 
-            mr.medical_record_id,
-            mr.diagnosis,
-            mr.symptoms,
-            mr.notes,
-            mr.follow_up_date,
-            mr.created_at,
-            d.name as doctor_name,
-            d.specialization,
-            a.reason as visit_type
-        FROM medical_records mr
-        JOIN doctors d ON mr.doctor_id = d.doctor_id
-        LEFT JOIN appointments a ON mr.appointment_id = a.appointment_id
-        WHERE mr.patient_id = ?
-        ORDER BY mr.created_at DESC
-    ');
-    $rec_stmt->execute([$patient_id]);
-    $records = $rec_stmt->fetchAll();
+    $records = $patientRepository->getMedicalRecordsByPatientId($patient_id);
 }
 ?>
 <!DOCTYPE html>

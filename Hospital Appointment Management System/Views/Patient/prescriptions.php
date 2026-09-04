@@ -1,6 +1,7 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/PatientRepository.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -18,11 +19,11 @@ if (!function_exists('e')) {
     }
 }
 
+$patientRepository = new PatientRepository($pdo);
+
 // Get patient_id from session
 $user_id = $_SESSION['user']['user_id'] ?? null;
-$stmt = $pdo->prepare('SELECT patient_id FROM patients WHERE user_id = ?');
-$stmt->execute([$user_id]);
-$patient = $stmt->fetch();
+$patient = $user_id ? $patientRepository->getPatientByUserId($user_id) : null;
 $patient_id = $patient ? $patient['patient_id'] : null;
 
 // Fetch all prescriptions for this patient
@@ -30,33 +31,7 @@ $prescriptions = [];
 $total_prescriptions = 0;
 
 if ($patient_id) {
-    $pres_stmt = $pdo->prepare('
-        SELECT 
-            pr.prescription_id,
-            pr.record_id,
-            pr.dosage,
-            pr.frequency,
-            pr.duration,
-            pr.instructions,
-            pr.quantity,
-            pr.created_at,
-            m.brand_name,
-            m.generic_name,
-            m.dosage AS med_dosage,
-            mr.diagnosis,
-            d.name AS doctor_name,
-            d.specialization,
-            d.initials,
-            d.color
-        FROM prescriptions pr
-        LEFT JOIN medicines m ON m.medicine_id = pr.medicine_id
-        LEFT JOIN medical_records mr ON mr.medical_record_id = pr.record_id
-        LEFT JOIN doctors d ON d.doctor_id = mr.doctor_id
-        WHERE mr.patient_id = ?
-        ORDER BY pr.created_at DESC
-    ');
-    $pres_stmt->execute([$patient_id]);
-    $prescriptions = $pres_stmt->fetchAll();
+    $prescriptions = $patientRepository->getPrescriptionsByPatientId($patient_id);
     $total_prescriptions = count($prescriptions);
 }
 ?>

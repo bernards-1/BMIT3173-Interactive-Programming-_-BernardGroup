@@ -11,8 +11,26 @@ require_once '../../Models/Pharmacy.php';
 $pharmacist     = Pharmacy::getPharmacistByUserId($_SESSION['user']['user_id']);
 $pharmacistName = $pharmacist ? $pharmacist['full_name'] : $_SESSION['user']['username'];
 
-$queue   = Pharmacy::getPendingQueue();
-$counts  = Pharmacy::getQueueStatusCounts();
+// Consuming Doctor Module API via cURL RESTful Service (Section 6.3)
+$ch = curl_init();
+$apiUrl = "http://localhost/Hospital%20Appointment%20Management%20System/api/get_prescriptions.php?status=pending&timeStamp=" . urlencode(date('Y-m-d H:i:s'));
+curl_setopt($ch, CURLOPT_URL, $apiUrl);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_TIMEOUT, 1); // 1.0s timeout guard
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+if ($httpCode === 200 && $response) {
+    $result = json_decode($response, true);
+    $queue  = $result['data'] ?? [];
+} else {
+    // Controlled Error Handling (Preserves Module Ownership Boundary)
+    $queue = [];
+    $errorMessage = "Clinical Prescription Service is temporarily unavailable. Please retry shortly.";
+}
+
+$counts         = Pharmacy::getQueueStatusCounts();
 $dispensedToday = Pharmacy::countDispensedToday();
 
 $avatarColors = ['#3b82f6','#a855f7','#10b981','#ef4444','#f59e0b','#06b6d4','#ec4899','#64748b'];
@@ -68,7 +86,15 @@ $avatarColors = ['#3b82f6','#a855f7','#10b981','#ef4444','#f59e0b','#06b6d4','#e
     <!-- Queue List -->
     <div class="queue-list-wrapper" id="queueContainer">
 
-        <?php if (empty($queue)): ?>
+        <?php if (isset($errorMessage)): ?>
+        <div id="serviceUnavailableAlert" style="background-color: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; padding: 18px 24px; border-radius: var(--radius-md); margin-bottom: 20px; display: flex; align-items: center; gap: 14px;">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size: 26px; color: #dc2626;"></i>
+            <div>
+                <div style="font-weight: 700; font-size: 15px;">Clinical Prescription Service Unavailable</div>
+                <div style="font-size: 13px; opacity: 0.95; margin-top: 2px;"><?php echo e($errorMessage); ?></div>
+            </div>
+        </div>
+        <?php elseif (empty($queue)): ?>
         <div id="emptyState" style="text-align: center; padding: 60px 20px; background-color: var(--white); border-radius: var(--radius-md); border: 1px dashed var(--border-color);">
             <i class="fa-solid fa-circle-check" style="font-size: 48px; color: var(--success); margin-bottom: 16px;"></i>
             <h4 style="font-size: 16px; font-weight: 700; color: var(--slate-700);">All Prescriptions Dispensed!</h4>

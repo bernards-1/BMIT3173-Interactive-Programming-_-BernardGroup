@@ -1,6 +1,7 @@
 <?php
 // Controllers/LoginController.php
 require_once __DIR__ . '/../Models/User.php';
+require_once __DIR__ . '/../core/SecuritySession.php';
 
 class LoginController {
     /**
@@ -9,14 +10,19 @@ class LoginController {
      * @return string|null Error message if validation fails, null otherwise.
      */
     public function handleLoginRequest() {
+        // Initialize secure session
+        SecuritySession::startSecureSession();
+
         // Handle Logout trigger
         if (isset($_GET['logout'])) {
-            if (session_status() === PHP_SESSION_NONE) {
-                session_start();
-            }
-            session_destroy();
-            header('Location: login.php');
+            SecuritySession::destroySession();
+            header('Location: login.php?msg=logged_out');
             exit;
+        }
+
+        // Handle error parameter from redirects (e.g. session timeout)
+        if (isset($_GET['error'])) {
+            return $_GET['error'];
         }
 
         // Handle POST submission
@@ -27,25 +33,21 @@ class LoginController {
             if (empty($email) || empty($password)) {
                 return "Please fill in all fields.";
             } else {
-                // Fetch user via ORM Model
+                // Fetch user via ORM Model (Using Prepared Statements inside findByEmail)
                 $user = User::findByEmail($email);
                 
                 if ($user && password_verify($password, $user->password)) {
                     if (!$user->is_active) {
                         return "Your account is not active. Please check your email for the activation link.";
                     }
-                    // Password is correct, start session
-                    if (session_status() === PHP_SESSION_NONE) {
-                        session_start();
-                    }
-                    $_SESSION['user_id'] = $user->user_id;
-                    $_SESSION['role'] = $user->role;
-                    $_SESSION['user'] = [
+                    
+                    // Session Fixation Mitigation: Regenerate session ID and store user payload securely
+                    SecuritySession::loginSuccess([
                         'user_id' => $user->user_id,
                         'username' => $user->username,
                         'email' => $user->email,
                         'role' => $user->role
-                    ];
+                    ]);
                     
                     // Redirect based on role
                     switch ($user->role) {

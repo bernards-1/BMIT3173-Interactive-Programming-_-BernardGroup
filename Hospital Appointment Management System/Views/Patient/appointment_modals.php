@@ -130,9 +130,14 @@ function checkAvailableSlots() {
     fetch(`../../api/appointment_action.php?action=get_booked_slots&appointment_id=${encodeURIComponent(aptId)}&date=${encodeURIComponent(selectedDate)}`)
     .then(res => res.json())
     .then(data => {
-        if (!data.success) return;
+        const isSuccess = (data.status === 'success' || data.status === 'no_data' || data.success);
+        if (!isSuccess) return;
 
-        if (data.on_leave) {
+        const payload = data.data || data;
+        const isOnLeave = payload.on_leave || false;
+        const bookedSlots = payload.booked_slots || [];
+
+        if (isOnLeave) {
             leaveAlert.style.display = 'flex';
             submitBtn.disabled = true;
             submitBtn.style.opacity = '0.5';
@@ -144,18 +149,26 @@ function checkAvailableSlots() {
             submitBtn.style.cursor = 'pointer';
         }
 
-        const bookedSlots = data.booked_slots || [];
         const options = timeSelect.querySelectorAll('option');
-
         let hasAvailableSelected = false;
+
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const isToday = selectedDate === todayStr;
+        const nowHms = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
         options.forEach(opt => {
             const timeVal = opt.value;
             const originalLabel = opt.getAttribute('data-label') || opt.value;
+            const isPast = isToday && timeVal <= nowHms;
 
             if (bookedSlots.includes(timeVal)) {
                 opt.disabled = true;
                 opt.innerText = `${originalLabel} (Booked)`;
+                opt.style.color = '#94a3b8';
+            } else if (isPast) {
+                opt.disabled = true;
+                opt.innerText = `${originalLabel} (Past)`;
                 opt.style.color = '#94a3b8';
             } else {
                 opt.disabled = false;
@@ -168,7 +181,7 @@ function checkAvailableSlots() {
         });
 
         // If current selection is disabled (booked), select the first available option
-        if (!hasAvailableSelected && !data.on_leave) {
+        if (!hasAvailableSelected && !isOnLeave) {
             for (let opt of options) {
                 if (!opt.disabled) {
                     timeSelect.value = opt.value;
@@ -178,6 +191,78 @@ function checkAvailableSlots() {
         }
     })
     .catch(err => console.error(err));
+}
+
+function updateUIDAfterCancel(aptId) {
+    // 1. Check if we are on mainpage.php (Dashboard)
+    const mainItem = document.getElementById('apt-item-' + aptId);
+    if (mainItem) {
+        mainItem.style.transition = 'all 0.3s ease';
+        mainItem.style.opacity = '0';
+        mainItem.style.transform = 'translateY(-10px)';
+        setTimeout(() => {
+            mainItem.remove();
+            
+            const bannerCnt = document.getElementById('bannerUpcomingCount');
+            if (bannerCnt) {
+                let count = parseInt(bannerCnt.textContent) || 0;
+                bannerCnt.textContent = Math.max(0, count - 1);
+            }
+            const sectionCnt = document.getElementById('sectionUpcomingCount');
+            if (sectionCnt) {
+                let count = parseInt(sectionCnt.textContent) || 0;
+                let newCount = Math.max(0, count - 1);
+                sectionCnt.textContent = newCount + ' scheduled';
+            }
+            
+            const wrapper = document.querySelector('.schedule-items-wrapper');
+            if (wrapper && wrapper.children.length === 0) {
+                wrapper.innerHTML = '<p style="padding: 24px; color: var(--slate-500); text-align: center;">No upcoming appointments.</p>';
+            }
+        }, 300);
+    }
+
+    // 2. Check if we are on my_appointment.php
+    const aptRow = document.getElementById('apt-row-' + aptId);
+    if (aptRow) {
+        aptRow.setAttribute('data-status', 'Cancelled');
+        
+        const badge = aptRow.querySelector('.apt-badge');
+        if (badge) {
+            badge.className = 'apt-badge cancelled';
+            badge.textContent = 'Cancelled';
+        }
+        
+        const actionsDiv = aptRow.querySelector('.apt-row-right');
+        if (actionsDiv) {
+            const buttons = actionsDiv.querySelectorAll('.apt-action-btn');
+            buttons.forEach(b => b.remove());
+        }
+
+        const scheduledStat = document.getElementById('statScheduledCount');
+        if (scheduledStat) {
+            let val = parseInt(scheduledStat.textContent) || 0;
+            scheduledStat.textContent = Math.max(0, val - 1);
+        }
+        const cancelledStat = document.getElementById('statCancelledCount');
+        if (cancelledStat) {
+            let val = parseInt(cancelledStat.textContent) || 0;
+            cancelledStat.textContent = val + 1;
+        }
+
+        const activeTab = document.querySelector('#aptFilterTabs .apt-filter-btn.active');
+        if (activeTab) {
+            const currentFilter = activeTab.getAttribute('data-filter');
+            if (currentFilter === 'Scheduled') {
+                aptRow.style.transition = 'all 0.3s ease';
+                aptRow.style.opacity = '0';
+                setTimeout(() => {
+                    aptRow.style.display = 'none';
+                    aptRow.style.opacity = '1';
+                }, 300);
+            }
+        }
+    }
 }
 
 function submitCancelAppointment() {
@@ -196,13 +281,14 @@ function submitCancelAppointment() {
     })
     .then(res => res.json())
     .then(data => {
-        if (data.success) {
+        btn.disabled = false;
+        btn.innerText = 'Yes, Cancel';
+
+        if (data.status === 'success' || data.success) {
             closeCancelModal();
-            location.reload();
+            updateUIDAfterCancel(aptId);
         } else {
             alert(data.message || 'Failed to cancel appointment.');
-            btn.disabled = false;
-            btn.innerText = 'Yes, Cancel';
         }
     })
     .catch(err => {
@@ -239,7 +325,7 @@ function submitRescheduleAppointment() {
     })
     .then(res => res.json())
     .then(data => {
-        if (data.success) {
+        if (data.status === 'success' || data.success) {
             closeRescheduleModal();
             location.reload();
         } else {
