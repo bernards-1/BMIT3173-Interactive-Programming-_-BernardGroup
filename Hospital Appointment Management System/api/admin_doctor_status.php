@@ -1,22 +1,11 @@
 <?php
-// api/admin_doctor_status.php
 /**
- * =========================================================================
- * WEB SERVICE (PROVIDER): Admin Module Doctor Duty & Status Service
- * =========================================================================
- * Provider: Admin Module
- * Consumers: Patient Module (during booking), Doctor Module (schedule sync)
- * Base URL: http://localhost:80/Hospital%20Appointment%20Management%20System/api/admin_doctor_status.php
+ * Admin Module Doctor Duty & Status Service
  * 
  * Contract Specification:
  * - Method: POST
  * - Content-Type: application/json
- * - Mandatory Fields:
- *    1. requestID   (string, alphanumeric + hyphen, e.g. "REQ-9a8b7c")
- *    2. timestamp   (string, format: YYYY-MM-DD HH:MM:SS)
- *    3. doctorId    (string, alphanumeric, e.g. "D001")
- *    4. checkDate   (string, format: YYYY-MM-DD)
- * =========================================================================
+ * - Mandatory Fields: requestID, timestamp, doctorId, checkDate
  */
 
 require_once __DIR__ . '/../db.php';

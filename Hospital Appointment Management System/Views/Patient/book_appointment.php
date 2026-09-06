@@ -130,28 +130,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $full_reason = "[" . $type . "] " . $reason;
 
     try {
-        // Fetch doctor's base fee
-        $base_fee = $patientRepository->getDoctorConsultationFee($doctor_id);
-
-        // 1. Calculate final price using Strategy Design Pattern
-        require_once '../../Models/PricingStrategy.php';
-        switch ($type) {
-            case 'Follow-up':
-                $strategy = new FollowUpPricing();
-                break;
-            case 'Routine Check-up':
-            case 'Vaccination':
-            case 'Lab Test Review':
-                $strategy = new RoutinePricing();
-                break;
-            case 'Consultation':
-            default:
-                $strategy = new StandardPricing();
-                break;
+        // Calculate fee via PatientController and PricingService
+        require_once '../../Controllers/PatientController.php';
+        $patientController = new PatientController();
+        $feeCalculation = $patientController->calculateAppointmentFee($doctor_id, $type);
+        if (!$feeCalculation['success']) {
+            echo json_encode(['success' => false, 'message' => 'Pricing calculation failed: ' . $feeCalculation['message']]);
+            exit;
         }
-
-        $paymentContext = new PaymentContext($strategy);
-        $final_amount = $paymentContext->getFinalPrice($base_fee);
+        $final_amount = $feeCalculation['final_amount'];
 
         // 2. Generate new unique payment_id (e.g. PA002) and invoice_no
         $pay_count = $patientRepository->getPaymentCount() + 1;

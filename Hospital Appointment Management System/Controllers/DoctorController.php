@@ -1,5 +1,7 @@
 <?php
-// Controllers/DoctorController.php
+/**
+ * Doctor Module Controller
+ */
 
 class DoctorController {
     

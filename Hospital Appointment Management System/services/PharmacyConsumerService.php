@@ -1,14 +1,6 @@
 <?php
-// services/PharmacyConsumerService.php
 /**
- * =========================================================================
- * WEB SERVICE (CONSUMER): Admin Consuming Pharmacy Inventory Web Service
- * =========================================================================
- * Consumer: Admin Module (Dashboard / Reports)
- * Provider: Pharmacy Module
- * Target Service: /api/pharmacy_inventory.php (or dedicated /api/pharmacy_summary.php)
- * Base URL: http://localhost:80/Hospital%20Appointment%20Management%20System/api/pharmacy_inventory.php
- * =========================================================================
+ * Pharmacy Consumer Service
  */
 
 class PharmacyConsumerService {

@@ -1,4 +1,6 @@
 <?php
+
+
 require_once '../../db.php';
 require_once '../../Models/User.php';
 if (session_status() === PHP_SESSION_NONE) {
@@ -25,7 +27,7 @@ $stmt->execute([$user_id]);
 $doctor = $stmt->fetch();
 $doctor_id = $doctor ? $doctor['doctor_id'] : 'D001';
 
-// Fetch medicines list via Web Service Consumption
+// Fetch medicines list via Web Service Consumption (IFA Standard)
 $medicines_list = [];
 $host = $_SERVER['HTTP_HOST'];
 $script = $_SERVER['SCRIPT_NAME'];
@@ -38,18 +40,21 @@ if (strpos($script, '/Hospital Appointment Management System') !== false) {
         $base_dir = '/' . $parts[0];
     }
 }
-$api_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $host . $base_dir . '/api/medicines.php';
+
+$req_id = 'REQ_DOC_SCHED_' . bin2hex(random_bytes(3));
+$req_ts = date('Y-m-d H:i:s');
+$api_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $host . $base_dir . '/api/medicines.php?requestID=' . urlencode($req_id) . '&timestamp=' . urlencode($req_ts);
 
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, $api_url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+curl_setopt($ch, CURLOPT_TIMEOUT, 2);
 $api_response = curl_exec($ch);
 curl_close($ch);
 
 if ($api_response) {
     $api_data = json_decode($api_response, true);
-    if (isset($api_data['status']) && $api_data['status'] === 'success') {
+    if (isset($api_data['status']) && $api_data['status'] === 'S' && !empty($api_data['data'])) {
         $medicines_list = $api_data['data'];
     }
 }

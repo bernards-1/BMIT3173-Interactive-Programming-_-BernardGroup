@@ -1,6 +1,9 @@
 <?php
-// api/doctor_details.php
-// RESTful Web Service to provide doctor details & active approved leave schedules
+/**
+ * Doctor Details API Service
+ * 
+ * Parameters: doctorId, requestID, timestamp
+ */
 require_once '../db.php';
 
 header('Content-Type: application/json; charset=utf-8');

@@ -1,5 +1,10 @@
 <?php
-// api/get_prescriptions.php
+/**
+ * Prescriptions API Service
+ * 
+ * Parameters: status, timeStamp
+ */
+
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../Models/Pharmacy.php';
 
@@ -11,18 +16,20 @@ $timeStamp = $_GET['timeStamp'] ?? date('Y-m-d H:i:s');
 try {
     $data = Pharmacy::getPendingQueue();
     echo json_encode([
-        'status'    => 'success',
-        'code'      => 200,
-        'count'     => count($data),
-        'data'      => $data,
-        'timestamp' => date('Y-m-d H:i:s')
+        'status'     => 'success',
+        'ifa_status' => 'S',
+        'code'       => 200,
+        'count'      => count($data),
+        'data'       => $data,
+        'timestamp'  => date('Y-m-d H:i:s')
     ]);
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([
-        'status'    => 'error',
-        'code'      => 500,
-        'message'   => 'Failed to fetch doctor prescriptions: ' . $e->getMessage(),
-        'timestamp' => date('Y-m-d H:i:s')
+        'status'     => 'error',
+        'ifa_status' => 'E',
+        'code'       => 500,
+        'message'    => 'Failed to fetch doctor prescriptions: ' . $e->getMessage(),
+        'timestamp'  => date('Y-m-d H:i:s')
     ]);
 }
