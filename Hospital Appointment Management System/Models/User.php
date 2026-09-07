@@ -1,65 +1,42 @@
 <?php
 // Models/User.php
 
-class User {
-    public $user_id;
-    public $username;
-    public $email;
-    public $password;
-    public $role;
-    public $is_active;
+require_once __DIR__ . '/../core/Model.php';
+
+class User extends Model {
+    protected static $table = 'users';
+    protected static $primaryKey = 'user_id';
 
     /**
-     * Find a user by their email address using secure prepared statements.
-     * 
+     * Find a user by their email address (ORM lookup by non-primary-key column).
+     *
      * @param string $email
      * @return User|null
      */
-    public static function findByEmail($email) {
-        global $pdo;
-        
-        $stmt = $pdo->prepare('SELECT user_id, username, email, password, role, is_active FROM users WHERE email = ? LIMIT 1');
-        $stmt->execute([$email]);
-        $row = $stmt->fetch();
-        
-        if ($row) {
-            $user = new User();
-            $user->user_id = $row['user_id'];
-            $user->username = $row['username'];
-            $user->email = $row['email'];
-            $user->password = $row['password'];
-            $user->role = $row['role'];
-            $user->is_active = $row['is_active'];
-            return $user;
-        }
-        
-        return null;
+    public static function findByEmail($email): ?self {
+        $results = static::where('email', $email);
+        return $results[0] ?? null;
     }
 
     /**
-     * Find a user by their user_id.
-     * 
-     * @param string $user_id
-     * @return User|null
+     * Whether the given username is already used by a different user
+     * (excludes the given user id). Aggregate COUNT — kept inside the Model.
      */
-    public static function find($user_id) {
-        global $pdo;
-        
-        $stmt = $pdo->prepare('SELECT user_id, username, email, password, role, is_active FROM users WHERE user_id = ? LIMIT 1');
-        $stmt->execute([$user_id]);
-        $row = $stmt->fetch();
-        
-        if ($row) {
-            $user = new User();
-            $user->user_id = $row['user_id'];
-            $user->username = $row['username'];
-            $user->email = $row['email'];
-            $user->password = $row['password'];
-            $user->role = $row['role'];
-            $user->is_active = $row['is_active'];
-            return $user;
-        }
-        
-        return null;
+    public static function usernameTakenByOther(string $username, string $excludeUserId): bool {
+        $db = static::getDb();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE username = ? AND user_id != ?");
+        $stmt->execute([$username, $excludeUserId]);
+        return $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Whether the given email is already used by a different user
+     * (excludes the given user id). Aggregate COUNT — kept inside the Model.
+     */
+    public static function emailTakenByOther(string $email, string $excludeUserId): bool {
+        $db = static::getDb();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE email = ? AND user_id != ?");
+        $stmt->execute([$email, $excludeUserId]);
+        return $stmt->fetchColumn() > 0;
     }
 }

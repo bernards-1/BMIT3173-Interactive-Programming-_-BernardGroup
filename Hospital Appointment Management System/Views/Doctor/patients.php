@@ -1,6 +1,8 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/Doctor.php';
+require_once '../../Models/Patient.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -11,49 +13,14 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'doctor') {
     exit;
 }
 
-// Get the correct doctor_id and name
+// Get the correct doctor_id and name via ORM
 $user_id = $_SESSION['user']['user_id'] ?? $_SESSION['user_id'] ?? null;
-$stmt = $pdo->prepare('SELECT doctor_id, name FROM doctors WHERE user_id = ?');
-$stmt->execute([$user_id]);
-$doctor = $stmt->fetch();
-$doctor_id = $doctor ? $doctor['doctor_id'] : 'D001';
+$doctorMatches = Doctor::where('user_id', $user_id);
+$doctor = $doctorMatches[0] ?? null;
+$doctor_id = $doctor ? $doctor->doctor_id : 'D001';
 
 // Fetch all patients with their visit summaries
-$pat_stmt = $pdo->prepare('
-    SELECT 
-        p.patient_id,
-        p.full_name,
-        p.gender,
-        p.date_of_birth,
-        p.phone,
-        u.email,
-        (
-            SELECT mr.diagnosis 
-            FROM medical_records mr 
-            WHERE mr.patient_id = p.patient_id 
-            ORDER BY mr.created_at DESC LIMIT 1
-        ) as condition_name,
-        (
-            SELECT COUNT(*) 
-            FROM appointments a 
-            WHERE a.patient_id = p.patient_id AND a.doctor_id = ?
-        ) as visits_count,
-        (
-            SELECT MAX(appointment_date) 
-            FROM appointments a 
-            WHERE a.patient_id = p.patient_id AND a.doctor_id = ? AND a.appointment_date <= CURDATE()
-        ) as last_visit_date,
-        (
-            SELECT MIN(appointment_date) 
-            FROM appointments a 
-            WHERE a.patient_id = p.patient_id AND a.doctor_id = ? AND a.appointment_date >= CURDATE() AND a.status = \'Scheduled\'
-        ) as next_visit_date
-    FROM patients p
-    JOIN users u ON p.user_id = u.user_id
-    ORDER BY p.full_name ASC
-');
-$pat_stmt->execute([$doctor_id, $doctor_id, $doctor_id]);
-$db_patients = $pat_stmt->fetchAll();
+$db_patients = Patient::getVisitSummariesForDoctor($doctor_id);
 
 // Construct the JS patients array
 $js_patients = [];

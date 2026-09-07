@@ -1,7 +1,5 @@
 <?php
-/**
- * Pharmacy Consumer Service
- */
+// services/PharmacyConsumerService.php
 
 class PharmacyConsumerService {
     private $baseUrl;
@@ -12,7 +10,8 @@ class PharmacyConsumerService {
         } else {
             $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
             $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-            $this->baseUrl = "{$protocol}://{$host}/Hospital Appointment Management System latest3/Hospital Appointment Management System/api";
+            $base_dir = '/Hospital Appointment Management System';
+            $this->baseUrl = "{$protocol}://{$host}" . str_replace(' ', '%20', $base_dir) . "/api";
         }
     }
 
@@ -21,9 +20,9 @@ class PharmacyConsumerService {
      * Returns structured result including HTTP code and captured response.
      */
     public function getInventoryAlerts($threshold = 10) {
-        $endpoint = $this->baseUrl . '/pharmacy_inventory.php?action=get_alerts&threshold=' . urlencode($threshold);
         $requestID = 'REQ-' . bin2hex(random_bytes(4));
         $timestamp = date('Y-m-d H:i:s');
+        $endpoint = $this->baseUrl . '/pharmacy_inventory.php?action=get_alerts&threshold=' . urlencode($threshold) . '&requestID=' . urlencode($requestID) . '&timestamp=' . urlencode($timestamp);
 
         $headers = [
             'Accept: application/json',
@@ -60,8 +59,12 @@ class PharmacyConsumerService {
         }
 
         $decoded = json_decode($responseBody, true);
+        $isSuccess = ($httpCode >= 200 && $httpCode < 300) 
+            && isset($decoded['status']) 
+            && in_array($decoded['status'], ['S', 'success'], true);
+
         return [
-            'status'    => ($httpCode >= 200 && $httpCode < 300) ? 'success' : 'error',
+            'status'    => $isSuccess ? 'success' : 'error',
             'httpCode'  => $httpCode,
             'requestID' => $requestID,
             'raw'       => $responseBody,

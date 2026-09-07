@@ -15,7 +15,7 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'patient') {
 $patientRepository = new PatientRepository($pdo);
 
 // Handle POST request to book appointment
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
 
     // Parse JSON input
@@ -103,6 +103,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // 2.2 Verify Doctor Active Duty Status via Admin Module Web Service (IFA Standard)
+    $admin_api_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $host
+        . '/' . implode('/', array_map('rawurlencode', explode('/', trim($base_dir, '/'))))
+        . '/api/admin_doctor_status.php';
+    
+    $adminReqPayload = json_encode([
+        'requestID' => 'REQ-ADM-' . bin2hex(random_bytes(4)),
+        'timestamp' => date('Y-m-d H:i:s'),
+        'doctorId'  => $doctor_id,
+        'checkDate' => $appointment_date
+    ]);
+
+    $ch_admin = curl_init();
+    curl_setopt($ch_admin, CURLOPT_URL, $admin_api_url);
+    curl_setopt($ch_admin, CURLOPT_POST, true);
+    curl_setopt($ch_admin, CURLOPT_POSTFIELDS, $adminReqPayload);
+    curl_setopt($ch_admin, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch_admin, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch_admin, CURLOPT_TIMEOUT, 1);
+    $admin_response = curl_exec($ch_admin);
+    curl_close($ch_admin);
+
+    if ($admin_response) {
+        $admin_data = json_decode($admin_response, true);
+        if (isset($admin_data['status']) && $admin_data['status'] === 'S' && isset($admin_data['data']['isAvailable']) && !$admin_data['data']['isAvailable']) {
+            echo json_encode(['success' => false, 'message' => 'The selected doctor is unavailable or on approved leave according to administrative records.']);
+            exit;
+        }
+    }
+
     // 3. Validate time slot conflict
     if ($patientRepository->hasAppointmentConflict($doctor_id, $appointment_date, $appointment_time)) {
         echo json_encode(['success' => false, 'message' => 'This time slot is already booked for this doctor. Please choose another time slot.']);
@@ -130,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $full_reason = "[" . $type . "] " . $reason;
 
     try {
-        // Calculate fee via PatientController and PricingService
+        // Delegate fee calculation to PatientController (Strategy Pattern)
         require_once '../../Controllers/PatientController.php';
         $patientController = new PatientController();
         $feeCalculation = $patientController->calculateAppointmentFee($doctor_id, $type);
@@ -178,8 +208,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-// Fetch all doctors from database
+// Fetch all doctors from database with leave status
+require_once '../../Models/DoctorLeave.php';
 $doctors = $patientRepository->getAllDoctors();
+$todayDate = date('Y-m-d');
+$doctorLeavesMap = [];
+foreach ($doctors as $idx => $doc) {
+    $docId = $doc['doctor_id'];
+    $leaves = DoctorLeave::upcomingApprovedRanges($docId);
+    $doctorLeavesMap[$docId] = $leaves;
+    $doctors[$idx]['is_on_leave_today'] = DoctorLeave::isDoctorOnLeave($docId, $todayDate);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -193,7 +232,7 @@ $doctors = $patientRepository->getAllDoctors();
     <link rel="stylesheet" href="../Layout/Patient/book_appointment.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* 日历基础交互样式支撑 */
+        /* Calendar interactive styles */
         .calendar-day:not(.muted) {
             cursor: pointer;
             transition: all 0.2s ease;
@@ -204,7 +243,7 @@ $doctors = $patientRepository->getAllDoctors();
             border-radius: 6px;
         }
 
-        /* 选中日期的蓝色高亮样式 */
+        /* Selected date highlight */
         .calendar-day.selected {
             background-color: var(--primary-blue, #3b82f6) !important;
             color: #ffffff !important;
@@ -212,7 +251,26 @@ $doctors = $patientRepository->getAllDoctors();
             font-weight: bold;
         }
 
-        /* 医生卡片与时间轴的选择样式 */
+        /* Doctor on-leave styles */
+        .calendar-day.on-leave {
+            background-color: #fef2f2 !important;
+            color: #ef4444 !important;
+            cursor: not-allowed !important;
+            border: 1px dashed #fca5a5 !important;
+            position: relative;
+        }
+
+        .calendar-day.on-leave::after {
+            content: '';
+            position: absolute;
+            bottom: 3px;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background-color: #ef4444;
+        }
+
+        /* Doctor card selection */
         .doctor-card {
             cursor: pointer;
             transition: all 0.2s ease;
@@ -272,7 +330,9 @@ $doctors = $patientRepository->getAllDoctors();
 
                     <div class="doctor-grid">
                         <?php if (!empty($doctors)): ?>
-                            <?php foreach ($doctors as $doctor): ?>
+                            <?php foreach ($doctors as $doctor): 
+                                $onLeaveToday = !empty($doctor['is_on_leave_today']);
+                            ?>
                                 <div class="doctor-card" data-id="<?= e($doctor['doctor_id']) ?>"
                                     data-name="<?= e($doctor['name']) ?>" data-fee="<?= e($doctor['consultation_fee']) ?>">
                                     <div class="doctor-avatar-icon"
@@ -282,7 +342,13 @@ $doctors = $patientRepository->getAllDoctors();
                                     <div class="doctor-card-info">
                                         <div class="doctor-card-name"><?= e($doctor['name']) ?></div>
                                         <div class="doctor-card-specialty"><?= e($doctor['specialization']) ?></div>
-                                        <div class="doctor-card-status available">Available</div>
+                                        <?php if ($onLeaveToday): ?>
+                                            <div class="doctor-card-status on-leave" style="color: #d97706; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                                                <i class="fa-solid fa-plane-departure" style="font-size: 11px;"></i> On Leave Today
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="doctor-card-status available">Available</div>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
@@ -319,6 +385,11 @@ $doctors = $patientRepository->getAllDoctors();
 
                         <div>
                             <div class="date-time-col-label">Available Time Slots</div>
+                            <!-- Doctor Leave Alert Banner -->
+                            <div id="doctorLeaveBanner" style="display: none; background: #fef2f2; border: 1px solid #fee2e2; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; font-size: 13px; color: #991b1b; align-items: center; gap: 8px;">
+                                <i class="fa-solid fa-circle-exclamation" style="font-size: 16px; flex-shrink: 0; color: #ef4444;"></i>
+                                <span id="doctorLeaveBannerText">Doctor is on approved leave on this date. Please choose another date.</span>
+                            </div>
                             <div class="time-slot-grid" id="timeSlotGrid">
                                 <button type="button" class="time-slot-btn" data-time="09:00:00"><i
                                         class="fa-regular fa-clock"></i> 09:00 AM</button>
@@ -421,8 +492,64 @@ $doctors = $patientRepository->getAllDoctors();
 
     <script>
         document.addEventListener("DOMContentLoaded", function () {
-            // 1. 初始化当前日期状态
-            let currentDate = new Date(); // 默认使用当前真实的年月日
+            // Preloaded approved leaves for all doctors
+            const doctorLeavesMap = <?= json_encode($doctorLeavesMap) ?>;
+
+            function isDateOnLeave(dateStr) {
+                if (!bookingData.doctorId || !dateStr) return false;
+                const leaves = doctorLeavesMap[bookingData.doctorId] || [];
+                for (const l of leaves) {
+                    if (dateStr >= l.start_date && dateStr <= l.end_date) {
+                        return l;
+                    }
+                }
+                return false;
+            }
+
+            // Dynamically update each doctor card's badge based on the selected calendar date
+            function updateDoctorCardsStatus(selectedDate) {
+                if (!selectedDate) return;
+                const today = new Date();
+                const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                const isToday = selectedDate === todayStr;
+
+                document.querySelectorAll('.doctor-card').forEach(card => {
+                    const docId = card.getAttribute('data-id');
+                    const statusEl = card.querySelector('.doctor-card-status');
+                    if (!statusEl) return;
+
+                    const leaves = doctorLeavesMap[docId] || [];
+                    let onLeave = false;
+                    for (const l of leaves) {
+                        if (selectedDate >= l.start_date && selectedDate <= l.end_date) {
+                            onLeave = true;
+                            break;
+                        }
+                    }
+
+                    if (onLeave) {
+                        const badgeText = isToday ? 'On Leave Today' : 'On Leave';
+                        statusEl.className = 'doctor-card-status on-leave';
+                        statusEl.style.color = '#d97706';
+                        statusEl.style.fontWeight = '600';
+                        statusEl.style.fontSize = '12px';
+                        statusEl.style.display = 'flex';
+                        statusEl.style.alignItems = 'center';
+                        statusEl.style.gap = '4px';
+                        statusEl.innerHTML = `<i class="fa-solid fa-plane-departure" style="font-size: 11px;"></i> ${badgeText}`;
+                    } else {
+                        statusEl.className = 'doctor-card-status available';
+                        statusEl.style.color = '#16a34a';
+                        statusEl.style.fontWeight = '600';
+                        statusEl.style.fontSize = '12.5px';
+                        statusEl.style.display = 'block';
+                        statusEl.innerHTML = 'Available';
+                    }
+                });
+            }
+
+            // 1. Initialize date state
+            let currentDate = new Date();
 
             let bookingData = {
                 doctorId: null,
@@ -449,25 +576,19 @@ $doctors = $patientRepository->getAllDoctors();
                 "July", "August", "September", "October", "November", "December"
             ];
 
-            // 【核心逻辑：动态生成日历方法】
+            // Render calendar grid dynamically
             function renderCalendar() {
                 const year = currentDate.getFullYear();
                 const month = currentDate.getMonth();
 
-                // 设置头部的 月份/年份 标签文字（如 "June 2026"）
                 monthYearLabel.innerText = `${months[month]} ${year}`;
-
-                // 清空现有的网格节点内容
                 calendarGrid.innerHTML = "";
 
-                // 获取当前月份的第一天是星期几 (0是星期天，1是星期一...)
                 const firstDayIndex = new Date(year, month, 1).getDay();
-                // 获取当前月份总共有多少天
                 const totalDays = new Date(year, month + 1, 0).getDate();
-                // 获取上一个月的总天数，用来补齐头部多出来的空档格子
                 const prevTotalDays = new Date(year, month, 0).getDate();
 
-                // 填充上一月的尾巴日期格子（加上 muted 变成灰色不可点）
+                // Leading days from previous month
                 for (let i = firstDayIndex; i > 0; i--) {
                     const dayDiv = document.createElement("div");
                     dayDiv.classList.add("calendar-day", "muted");
@@ -475,7 +596,7 @@ $doctors = $patientRepository->getAllDoctors();
                     calendarGrid.appendChild(dayDiv);
                 }
 
-                // 填充当前月份的正式有效日期格子
+                // Current month days
                 for (let day = 1; day <= totalDays; day++) {
                     const dayDiv = document.createElement("div");
                     dayDiv.classList.add("calendar-day");
@@ -486,21 +607,30 @@ $doctors = $patientRepository->getAllDoctors();
                     const matchStr = `${year}-${formattedMonthNum}-${formattedDayNum}`;
                     const displayStr = `${months[month]} ${day}, ${year}`;
 
-                    // 如果这个格子正好等于用户当前选定的那个日期，就加上蓝色高亮类名
+                    const leaveInfo = isDateOnLeave(matchStr);
+                    if (leaveInfo) {
+                        dayDiv.classList.add("on-leave");
+                        dayDiv.title = `Dr. ${bookingData.doctorName || 'Doctor'} is on approved leave (${leaveInfo.start_date} to ${leaveInfo.end_date})`;
+                    }
+
                     if (bookingData.date === matchStr) {
                         dayDiv.classList.add("selected");
                     }
 
-                    // 给每个数字格子绑定点击事件
                     dayDiv.addEventListener("click", function () {
-                        // 移除当前日历中所有现有的蓝色高亮
+                        const leave = isDateOnLeave(matchStr);
+                        if (leave) {
+                            document.getElementById('errorModalMsg').innerText = `Dr. ${bookingData.doctorName || 'The selected doctor'} is on approved leave from ${leave.start_date} to ${leave.end_date}. No appointments can be scheduled on this date.`;
+                            document.getElementById('bookingErrorModal').classList.add('active');
+                            return;
+                        }
+
                         document.querySelectorAll("#calendarGrid .calendar-day").forEach(d => d.classList.remove("selected"));
-                        // 给当前被点中的格子加上蓝色高亮
                         this.classList.add("selected");
 
-                        // 同步更新全局对象和右侧摘要文本
                         bookingData.date = matchStr;
                         summaryDate.innerText = displayStr;
+                        updateDoctorCardsStatus(matchStr);
                         updateTimeSlotAvailability();
                         validateForm();
                     });
@@ -508,7 +638,7 @@ $doctors = $patientRepository->getAllDoctors();
                     calendarGrid.appendChild(dayDiv);
                 }
 
-                // 计算末尾需要补齐下个月头部的灰色格子数量，凑满日历矩阵
+                // Trailing days for next month to complete matrix
                 const totalSlotsFilled = firstDayIndex + totalDays;
                 const nextMonthSlotsNeeded = totalSlotsFilled % 7 === 0 ? 0 : 7 - (totalSlotsFilled % 7);
                 for (let j = 1; j <= nextMonthSlotsNeeded; j++) {
@@ -519,18 +649,18 @@ $doctors = $patientRepository->getAllDoctors();
                 }
             }
 
-            // 【月份切换按钮事件处理】
+            // Month navigation controls
             prevMonthBtn.addEventListener("click", function () {
-                currentDate.setMonth(currentDate.getMonth() - 1); // 月份减 1
-                renderCalendar(); // 重新渲染界面
+                currentDate.setMonth(currentDate.getMonth() - 1);
+                renderCalendar();
             });
 
             nextMonthBtn.addEventListener("click", function () {
-                currentDate.setMonth(currentDate.getMonth() + 1); // 月份加 1
-                renderCalendar(); // 重新渲染界面
+                currentDate.setMonth(currentDate.getMonth() + 1);
+                renderCalendar();
             });
 
-            // 默认自动把今天初始化为选定日期
+            // Initialize default selected date to today
             const initYear = currentDate.getFullYear();
             const initMonth = currentDate.getMonth();
             const initDay = currentDate.getDate();
@@ -539,11 +669,12 @@ $doctors = $patientRepository->getAllDoctors();
             bookingData.date = `${initYear}-${initFormattedMonth}-${initFormattedDay}`;
             summaryDate.innerText = `${months[initMonth]} ${initDay}, ${initYear}`;
 
-            // 初次加载页面时执行一次渲染
+            // Initial render
             renderCalendar();
+            updateDoctorCardsStatus(bookingData.date);
 
 
-            // 3. 医生选择模块交互
+            // 3. Doctor selection handling
             const doctorCards = document.querySelectorAll(".doctor-card");
             doctorCards.forEach(card => {
                 card.addEventListener("click", function () {
@@ -562,14 +693,36 @@ $doctors = $patientRepository->getAllDoctors();
                     summaryDoctor.innerText = bookingData.doctorName;
                     summaryDoctor.classList.remove("muted");
 
+                    // Re-render calendar so this doctor's leave dates are immediately styled
+                    renderCalendar();
+
+                    // Update doctor card badge and time slots for current selected date
+                    updateDoctorCardsStatus(bookingData.date);
+                    updateTimeSlotAvailability();
+
                     // Update fees in UI
                     updateFees();
 
                     validateForm();
+
+                    // Client-side Web Service Consumption: real-time refresh of doctor details & approved leaves
+                    const liveReqId = 'REQ-LIVE-' + Math.random().toString(36).substring(2, 9);
+                    const liveTimestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+                    fetch(`../../api/doctor_details.php?doctorId=${encodeURIComponent(bookingData.doctorId)}&requestID=${encodeURIComponent(liveReqId)}&timestamp=${encodeURIComponent(liveTimestamp)}`)
+                        .then(r => r.json())
+                        .then(res => {
+                            if (res.status === 'S' && res.data && res.data.approvedLeaves) {
+                                doctorLeavesMap[bookingData.doctorId] = res.data.approvedLeaves;
+                                renderCalendar();
+                                updateDoctorCardsStatus(bookingData.date);
+                                updateTimeSlotAvailability();
+                            }
+                        })
+                        .catch(() => {});
                 });
             });
 
-            // 4. 时间段选择交互
+            // 4. Time slot selection handling
             const timeBtns = document.querySelectorAll("#timeSlotGrid .time-slot-btn");
             timeBtns.forEach(btn => {
                 btn.addEventListener("click", function () {
@@ -584,8 +737,32 @@ $doctors = $patientRepository->getAllDoctors();
                 });
             });
 
-            // Disable time slots that have already passed when today is selected
+            // Disable time slots that have already passed when today is selected or doctor is on leave
             function updateTimeSlotAvailability() {
+                const leaveBanner = document.getElementById('doctorLeaveBanner');
+                const leaveBannerText = document.getElementById('doctorLeaveBannerText');
+                const leave = isDateOnLeave(bookingData.date);
+
+                if (leave) {
+                    if (leaveBanner) {
+                        leaveBanner.style.display = 'flex';
+                        leaveBannerText.innerText = `Dr. ${bookingData.doctorName || 'Doctor'} is on approved leave on this date (${bookingData.date}). Please choose another date.`;
+                    }
+                    timeBtns.forEach(btn => {
+                        btn.classList.add("disabled");
+                        btn.classList.remove("selected");
+                    });
+                    bookingData.time = "";
+                    summaryTime.innerText = "Not selected";
+                    summaryTime.classList.add("muted");
+                    validateForm();
+                    return;
+                } else {
+                    if (leaveBanner) {
+                        leaveBanner.style.display = 'none';
+                    }
+                }
+
                 const now = new Date();
                 const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                 const isToday = bookingData.date === todayStr;
@@ -604,7 +781,7 @@ $doctors = $patientRepository->getAllDoctors();
                 });
                 validateForm();
             }
-            updateTimeSlotAvailability(); // 页面加载时立即执行一次（默认选中今天）
+            updateTimeSlotAvailability();
 
             // Dynamic fee calculator matching Strategy Pattern
             function updateFees() {
@@ -623,7 +800,7 @@ $doctors = $patientRepository->getAllDoctors();
                 document.getElementById("totalFeeVal").innerText = `$${totalFee.toFixed(2)}`;
             }
 
-            // 5. 下拉菜单与文本框输入监听
+            // 5. Input change event listeners
             const appointmentType = document.getElementById("appointmentType");
             const reasonForVisit = document.getElementById("reasonForVisit");
 
@@ -638,16 +815,17 @@ $doctors = $patientRepository->getAllDoctors();
                 validateForm();
             });
 
-            // 6. 实时校验所有必填项是否选完
+            // 6. Form validation
             function validateForm() {
-                if (bookingData.doctorId && bookingData.date && bookingData.time && bookingData.type && bookingData.reason.length > 0) {
+                const onLeave = isDateOnLeave(bookingData.date);
+                if (!onLeave && bookingData.doctorId && bookingData.date && bookingData.time && bookingData.type && bookingData.reason.length > 0) {
                     btnConfirm.classList.remove("disabled");
                 } else {
                     btnConfirm.classList.add("disabled");
                 }
             }
 
-            // 7. 点击提交预约按钮
+            // 7. Submit booking request
             btnConfirm.addEventListener("click", function () {
                 if (this.classList.contains("disabled")) return;
 
@@ -679,7 +857,7 @@ $doctors = $patientRepository->getAllDoctors();
                     });
             });
 
-            // 8. 医生姓名/科室关键词搜索过滤
+            // 8. Doctor search and filter handling
             const searchInput = document.getElementById("doctorSearch");
             searchInput.addEventListener("input", function () {
                 const filter = this.value.toLowerCase();

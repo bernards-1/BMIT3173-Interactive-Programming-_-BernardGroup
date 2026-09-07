@@ -46,9 +46,9 @@ echo "<style>
         <a href="leave_requests.php" class="nav-link <?= ($current_page == 'leave_requests.php') ? 'active' : '' ?>" style="position:relative;">
             Leave Requests
             <?php
-            // Show badge if there are pending leave requests
-            global $pdo;
-            $pending_count = $pdo->query("SELECT COUNT(*) FROM doctor_leaves WHERE status = 'Pending'")->fetchColumn();
+            // Show badge if there are pending leave requests via ORM
+            require_once __DIR__ . '/../../../Models/DoctorLeave.php';
+            $pending_count = DoctorLeave::count('status', 'Pending');
             if ($pending_count > 0): ?>
                 <span style="position:absolute;top:-6px;right:-10px;background:#ef4444;color:white;font-size:10px;font-weight:700;padding:2px 5px;border-radius:999px;line-height:1;"><?= $pending_count ?></span>
             <?php endif; ?>

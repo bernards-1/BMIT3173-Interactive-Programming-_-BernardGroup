@@ -1,10 +1,8 @@
 <?php
-/**
- * Doctor Details API Service
- * 
- * Parameters: doctorId, requestID, timestamp
- */
+// api/doctor_details.php
 require_once '../db.php';
+require_once '../Models/Doctor.php';
+require_once '../Models/DoctorLeave.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -84,13 +82,11 @@ try {
         exit;
     }
 
-    // 3. Query Database for Doctor Details
-    $stmt = $pdo->prepare("SELECT doctor_id, name, specialization, qualification, phone, email, consultation_fee, initials, color FROM doctors WHERE doctor_id = ?");
-    $stmt->execute([$doctorId]);
-    $doctor = $stmt->fetch(PDO::FETCH_ASSOC);
+    // 3. Query Database for Doctor Details via ORM
+    $doctorModel = Doctor::find($doctorId);
 
     // No-Result response
-    if (!$doctor) {
+    if (!$doctorModel) {
         http_response_code(404);
         echo json_encode([
             'status' => 'F',
@@ -102,10 +98,21 @@ try {
         exit;
     }
 
-    // 4. Query Database for Approved Leave Dates
-    $leaveStmt = $pdo->prepare("SELECT start_date, end_date, reason FROM doctor_leaves WHERE doctor_id = ? AND status = 'Approved' AND end_date >= CURDATE() ORDER BY start_date ASC");
-    $leaveStmt->execute([$doctorId]);
-    $leaves = $leaveStmt->fetchAll(PDO::FETCH_ASSOC);
+    // Only expose the public-facing fields (mirrors the original column list)
+    $doctor = [
+        'doctor_id'         => $doctorModel->doctor_id,
+        'name'              => $doctorModel->name,
+        'specialization'    => $doctorModel->specialization,
+        'qualification'     => $doctorModel->qualification,
+        'phone'             => $doctorModel->phone,
+        'email'             => $doctorModel->email,
+        'consultation_fee'  => $doctorModel->consultation_fee,
+        'initials'          => $doctorModel->initials,
+        'color'             => $doctorModel->color,
+    ];
+
+    // 4. Query Database for Approved Leave Dates via ORM
+    $leaves = DoctorLeave::upcomingApprovedRanges($doctorId);
 
     // Success response (Data type is Object containing doctorInfo and approvedLeaves)
     echo json_encode([

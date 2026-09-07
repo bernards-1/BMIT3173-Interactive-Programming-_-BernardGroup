@@ -1,6 +1,8 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/Doctor.php';
+require_once '../../Models/MedicalRecord.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -16,33 +18,14 @@ function e($value) {
     return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 }
 
-// Get the correct doctor_id and name
+// Get the correct doctor_id and name via ORM
 $user_id = $_SESSION['user']['user_id'] ?? $_SESSION['user_id'] ?? null;
-$stmt = $pdo->prepare('SELECT doctor_id, name FROM doctors WHERE user_id = ?');
-$stmt->execute([$user_id]);
-$doctor = $stmt->fetch();
-$doctor_id = $doctor ? $doctor['doctor_id'] : 'D001';
+$doctorMatches = Doctor::where('user_id', $user_id);
+$doctor = $doctorMatches[0] ?? null;
+$doctor_id = $doctor ? $doctor->doctor_id : 'D001';
 
 // Fetch all medical records for patients of this doctor
-$rec_stmt = $pdo->prepare('
-    SELECT 
-        mr.medical_record_id,
-        mr.patient_id,
-        mr.diagnosis,
-        mr.symptoms,
-        mr.notes,
-        mr.follow_up_date,
-        mr.created_at,
-        p.full_name,
-        a.reason as visit_type
-    FROM medical_records mr
-    JOIN patients p ON mr.patient_id = p.patient_id
-    LEFT JOIN appointments a ON mr.appointment_id = a.appointment_id
-    WHERE mr.doctor_id = ?
-    ORDER BY mr.created_at DESC
-');
-$rec_stmt->execute([$doctor_id]);
-$db_records = $rec_stmt->fetchAll();
+$db_records = MedicalRecord::getForDoctor($doctor_id);
 
 // Group records by patient
 $grouped = [];

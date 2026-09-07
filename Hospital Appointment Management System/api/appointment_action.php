@@ -1,6 +1,9 @@
 <?php
 require_once '../db.php';
 require_once '../Models/User.php';
+require_once '../Models/Patient.php';
+require_once '../Models/Appointment.php';
+require_once '../Models/DoctorLeave.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -14,19 +17,18 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'patient') {
     exit;
 }
 
-// Get patient_id
-$stmt = $pdo->prepare("SELECT patient_id FROM patients WHERE user_id = ?");
-$stmt->execute([$_SESSION['user']['user_id']]);
-$patient = $stmt->fetch();
+// Get patient_id via ORM
+$patientMatches = Patient::where('user_id', $_SESSION['user']['user_id']);
+$patient = $patientMatches[0] ?? null;
 
 if (!$patient) {
     echo json_encode(['success' => false, 'message' => 'Patient record not found.']);
     exit;
 }
 
-$patient_id = $patient['patient_id'];
+$patient_id = $patient->patient_id;
 
-// Get input data (支持 GET 和 POST)
+// Get input data (supports JSON and form POST/GET)
 $input = json_decode(file_get_contents('php://input'), true);
 if (!$input) {
     $input = $_REQUEST;
@@ -40,17 +42,15 @@ if (empty($action) || empty($appointment_id)) {
     exit;
 }
 
-// Check ownership of appointment
-$stmt = $pdo->prepare("SELECT * FROM appointments WHERE appointment_id = ? AND patient_id = ?");
-$stmt->execute([$appointment_id, $patient_id]);
-$appointment = $stmt->fetch();
+// Check ownership of appointment via ORM (single PK lookup + ownership check in code)
+$appointment = Appointment::find($appointment_id);
 
-if (!$appointment) {
+if (!$appointment || $appointment->patient_id !== $patient_id) {
     echo json_encode(['success' => false, 'message' => 'Appointment not found or permission denied.']);
     exit;
 }
 
-$doctor_id = $appointment['doctor_id'];
+$doctor_id = $appointment->doctor_id;
 
 // Action 1: Get booked time slots and leave status for a specific date
 if ($action === 'get_booked_slots') {
@@ -60,10 +60,8 @@ if ($action === 'get_booked_slots') {
         exit;
     }
     
-    // Check doctor leave
-    $leave_stmt = $pdo->prepare("SELECT COUNT(*) FROM doctor_leaves WHERE doctor_id = ? AND start_date <= ? AND end_date >= ? AND status = 'Approved'");
-    $leave_stmt->execute([$doctor_id, $target_date, $target_date]);
-    $is_on_leave = $leave_stmt->fetchColumn() > 0;
+    // Check doctor leave via ORM
+    $is_on_leave = DoctorLeave::isDoctorOnLeave($doctor_id, $target_date);
     
     // Check booked slots on that date (excluding current appointment)
     $booked_stmt = $pdo->prepare("SELECT appointment_time FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND appointment_id != ? AND status = 'Scheduled'");
@@ -80,7 +78,6 @@ if ($action === 'get_booked_slots') {
 
 // Action 2: Cancel appointment
 if ($action === 'cancel') {
-    require_once '../Models/Appointment.php';
     $apptObj = Appointment::load($appointment_id);
     if (!$apptObj) {
         echo json_encode(['success' => false, 'message' => 'Appointment not found.']);
@@ -115,24 +112,23 @@ if ($action === 'reschedule') {
         exit;
     }
     
-    // 1. Validate doctor leave
-    $leave_stmt = $pdo->prepare("SELECT COUNT(*) FROM doctor_leaves WHERE doctor_id = ? AND start_date <= ? AND end_date >= ? AND status = 'Approved'");
-    $leave_stmt->execute([$doctor_id, $new_date, $new_date]);
-    if ($leave_stmt->fetchColumn() > 0) {
+    // 1. Validate doctor leave via ORM
+    if (DoctorLeave::isDoctorOnLeave($doctor_id, $new_date)) {
         echo json_encode(['success' => false, 'message' => 'The doctor is on leave on this date. Please select another date.']);
         exit;
     }
     
     // 2. Validate time slot conflict
-    $conflict_stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND appointment_id != ? AND status = 'Scheduled'");
-    $conflict_stmt->execute([$doctor_id, $new_date, $new_time, $appointment_id]);
-    if ($conflict_stmt->fetchColumn() > 0) {
+    if (Appointment::hasScheduledConflict($doctor_id, $new_date, $new_time, $appointment_id)) {
         echo json_encode(['success' => false, 'message' => 'This time slot is already booked for this doctor. Please choose another time slot.']);
         exit;
     }
     
-    $stmt = $pdo->prepare("UPDATE appointments SET appointment_date = ?, appointment_time = ?, status = 'Scheduled' WHERE appointment_id = ? AND patient_id = ?");
-    $stmt->execute([$new_date, $new_time, $appointment_id, $patient_id]);
+    // Update via ORM (ownership already verified above)
+    $appointment->appointment_date = $new_date;
+    $appointment->appointment_time = $new_time;
+    $appointment->status = 'Scheduled';
+    $appointment->save();
     
     echo json_encode(['success' => true, 'message' => 'Appointment rescheduled successfully.']);
     exit;

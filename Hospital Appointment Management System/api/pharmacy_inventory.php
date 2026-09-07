@@ -30,15 +30,18 @@ $method = $_SERVER['REQUEST_METHOD'];
 // Handle GET for Admin Consumer alerts
 if ($method === 'GET' && isset($_GET['action']) && $_GET['action'] === 'get_alerts') {
     $threshold = (int)($_GET['threshold'] ?? 10);
+    $requestID = $_GET['requestID'] ?? ($_SERVER['HTTP_X_REQUEST_ID'] ?? 'REQ-' . bin2hex(random_bytes(4)));
     $lowStock = Pharmacy::getLowStockMedicines();
     http_response_code(200);
     echo json_encode([
-        'status' => 'success',
-        'code' => 200,
-        'provider' => 'PharmacyModule',
-        'threshold' => $threshold,
-        'count' => count($lowStock),
-        'data' => $lowStock
+        'status'     => 'S',
+        'code'       => 200,
+        'provider'   => 'PharmacyModule',
+        'threshold'  => $threshold,
+        'count'      => count($lowStock),
+        'requestID'  => $requestID,
+        'timestamp'  => date('Y-m-d H:i:s'),
+        'data'       => $lowStock
     ]);
     exit;
 }

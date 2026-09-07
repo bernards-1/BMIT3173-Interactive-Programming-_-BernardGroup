@@ -1,6 +1,11 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/Doctor.php';
+require_once '../../Models/Patient.php';
+require_once '../../Models/MedicalRecord.php';
+require_once '../../Models/Appointment.php';
+require_once '../../Models/Prescription.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -14,15 +19,14 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'doctor') {
 // Get patient ID from query parameter
 $patient_id = isset($_GET['id']) ? trim($_GET['id']) : 'P001';
 
-// Fetch patient info from database
-$pat_stmt = $pdo->prepare('SELECT * FROM patients WHERE patient_id = ?');
-$pat_stmt->execute([$patient_id]);
-$patient = $pat_stmt->fetch();
+// Fetch patient info via ORM (toArray() keeps the existing $patient['field'] template below unchanged)
+$patientModel = Patient::find($patient_id);
 
-if (!$patient) {
+if (!$patientModel) {
     echo "Patient not found.";
     exit;
 }
+$patient = $patientModel->toArray();
 
 // Helper to escape output
 function e($value) {
@@ -37,62 +41,28 @@ function getAge($dob) {
     return $birthdate->diff($today)->y;
 }
 
-// Get the correct doctor_id and name
+// Get the correct doctor_id and name via ORM
 $user_id = $_SESSION['user']['user_id'] ?? $_SESSION['user_id'] ?? null;
-$stmt = $pdo->prepare('SELECT doctor_id FROM doctors WHERE user_id = ?');
-$stmt->execute([$user_id]);
-$doctor = $stmt->fetch();
-$doctor_id = $doctor ? $doctor['doctor_id'] : 'D001';
+$doctorMatches = Doctor::where('user_id', $user_id);
+$doctor = $doctorMatches[0] ?? null;
+$doctor_id = $doctor ? $doctor->doctor_id : 'D001';
 
-// Get visits count for this patient
-$visits_stmt = $pdo->prepare('SELECT COUNT(*) FROM medical_records WHERE patient_id = ?');
-$visits_stmt->execute([$patient_id]);
-$visits_count = $visits_stmt->fetchColumn();
+// Get visits count for this patient via ORM
+$visits_count = MedicalRecord::count('patient_id', $patient_id);
 
 // Get last visit date
-$last_stmt = $pdo->prepare('SELECT MAX(created_at) FROM medical_records WHERE patient_id = ?');
-$last_stmt->execute([$patient_id]);
-$last_visit_raw = $last_stmt->fetchColumn();
+$last_visit_raw = MedicalRecord::getLastVisitDate($patient_id);
 $last_visit = $last_visit_raw ? date('Y-m-d', strtotime($last_visit_raw)) : 'None';
 
 // Get next follow-up appointment date (Scheduled appointment in the future or next appointment)
-$next_stmt = $pdo->prepare('
-    SELECT MIN(appointment_date) 
-    FROM appointments 
-    WHERE patient_id = ? AND appointment_date >= CURDATE() AND status = \'Scheduled\'
-');
-$next_stmt->execute([$patient_id]);
-$next_visit_raw = $next_stmt->fetchColumn();
+$next_visit_raw = Appointment::getNextScheduledDateForPatient($patient_id);
 $next_visit = $next_visit_raw ? date('Y-m-d', strtotime($next_visit_raw)) : 'None';
 
 // Get prescriptions count for this patient
-$pres_stmt = $pdo->prepare('
-    SELECT COUNT(*) 
-    FROM prescriptions pr
-    JOIN medical_records mr ON pr.record_id = mr.medical_record_id
-    WHERE mr.patient_id = ?
-');
-$pres_stmt->execute([$patient_id]);
-$pres_count = $pres_stmt->fetchColumn();
+$pres_count = Prescription::getCountForPatient($patient_id);
 
 // Fetch visit history list for the patient
-$history_stmt = $pdo->prepare('
-    SELECT 
-        mr.medical_record_id,
-        mr.diagnosis,
-        mr.symptoms,
-        mr.notes,
-        mr.follow_up_date,
-        mr.created_at,
-        a.reason as visit_type,
-        a.status as appointment_status
-    FROM medical_records mr
-    LEFT JOIN appointments a ON mr.appointment_id = a.appointment_id
-    WHERE mr.patient_id = ?
-    ORDER BY mr.created_at DESC
-');
-$history_stmt->execute([$patient_id]);
-$history_records = $history_stmt->fetchAll();
+$history_records = MedicalRecord::getHistoryForPatient($patient_id);
 
 // Group history records into JS format
 $js_records = [];
@@ -120,14 +90,7 @@ foreach ($history_records as $rec) {
     }
     
     // Check if there are medicines for this record
-    $meds_stmt = $pdo->prepare('
-        SELECT pr.dosage, pr.frequency, pr.duration, pr.instructions, pr.quantity, m.brand_name, m.generic_name 
-        FROM prescriptions pr
-        JOIN medicines m ON pr.medicine_id = m.medicine_id
-        WHERE pr.record_id = ?
-    ');
-    $meds_stmt->execute([$rec['medical_record_id']]);
-    $medicines = $meds_stmt->fetchAll();
+    $medicines = Prescription::getMedicinesForRecord($rec['medical_record_id']);
     
     $js_records[] = [
         'type' => $v_type,

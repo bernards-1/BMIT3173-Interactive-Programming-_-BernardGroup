@@ -18,21 +18,21 @@ $data = $controller->appointments();
         .header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
         .btn-primary { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; }
         
-        /* 顶部四个数据卡片 */
+        /* Metric Summary Cards */
         .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 24px; }
         .sum-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; display: flex; justify-content: space-between; align-items: center; }
         .sum-info p { font-size: 14px; color: #64748b; font-weight: 500; margin-bottom: 8px; }
         .sum-info h3 { font-size: 28px; font-weight: 700; color: #0f172a; }
         .sum-icon { font-size: 24px; }
         
-        /* 搜索和过滤栏 */
+        /* Search and Filter Controls */
         .controls-bar { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
         .search-box { position: relative; width: 400px; }
         .search-box i { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
         .search-box input { width: 100%; padding: 10px 16px 10px 40px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; background: #f8fafc; outline: none; }
         .btn-outline { background: white; border: 1px solid #e2e8f0; padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #475569; cursor: pointer; display: flex; align-items: center; gap: 8px; }
         
-        /* 表格区域与 Tabs */
+        /* Table Card and Tab Navigation */
         .table-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
         .table-header { padding: 20px 24px; border-bottom: 1px solid #e2e8f0; }
         .table-header h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }

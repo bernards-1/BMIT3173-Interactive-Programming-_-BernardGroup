@@ -1,6 +1,7 @@
 <?php
 // Subsystems/DoctorSubsystem.php
 require_once __DIR__ . '/../Models/Doctor.php';
+require_once __DIR__ . '/../Models/DoctorLeave.php';
 
 /**
  * DoctorSubsystem handles all low-level business logic, queries, and state
@@ -23,8 +24,7 @@ class DoctorSubsystem {
      * Get total count of registered doctors.
      */
     public function getActiveDoctorsCount() {
-        $stmt = $this->pdo->query("SELECT COUNT(*) FROM doctors");
-        return (int) $stmt->fetchColumn();
+        return Doctor::count();
     }
 
     /**
@@ -52,27 +52,30 @@ class DoctorSubsystem {
      * Fetch all leave requests with doctor information.
      */
     public function getLeaveRequests() {
-        $stmt = $this->pdo->query("
-            SELECT dl.*, d.name AS doctor_name
-            FROM doctor_leaves dl
-            JOIN doctors d ON dl.doctor_id = d.doctor_id
-            ORDER BY 
-                CASE dl.status WHEN 'Pending' THEN 0 WHEN 'Approved' THEN 1 ELSE 2 END,
-                dl.created_at DESC
-        ");
-        return $stmt->fetchAll();
+        return DoctorLeave::allWithDoctorName();
     }
 
     /**
-     * Process leave request approval or rejection.
+     * Process leave request approval or rejection via ORM.
      */
     public function updateLeaveStatus($leaveId, $status, $rejectReason = null) {
+        $leave = DoctorLeave::find($leaveId);
+        if (!$leave) {
+            return false;
+        }
         if ($status === 'Approved') {
-            $stmt = $this->pdo->prepare("UPDATE doctor_leaves SET status = 'Approved' WHERE leave_id = ?");
-            return $stmt->execute([$leaveId]);
+            $approved = $leave->approve();
+            if ($approved) {
+                // ORM + State Pattern: Cancel conflicting scheduled appointments
+                require_once __DIR__ . '/../Models/Appointment.php';
+                $clashingAppointments = Appointment::getScheduledBetween($leave->doctor_id, $leave->start_date, $leave->end_date);
+                foreach ($clashingAppointments as $appt) {
+                    $appt->cancel();
+                }
+            }
+            return $approved;
         } elseif ($status === 'Rejected') {
-            $stmt = $this->pdo->prepare("UPDATE doctor_leaves SET status = 'Rejected', reject_reason = ? WHERE leave_id = ?");
-            return $stmt->execute([$rejectReason, $leaveId]);
+            return $leave->reject($rejectReason);
         }
         return false;
     }
@@ -81,25 +84,25 @@ class DoctorSubsystem {
      * Query doctor duty & availability for inter-module integration.
      */
     public function getDoctorAvailability($doctorId, $date = null) {
-        $stmt = $this->pdo->prepare("SELECT doctor_id, name, specialization, phone, email, consultation_fee FROM doctors WHERE doctor_id = ?");
-        $stmt->execute([$doctorId]);
-        $doctor = $stmt->fetch();
+        $doctorMatches = Doctor::where('doctor_id', $doctorId);
+        $doctorModel = $doctorMatches[0] ?? null;
 
-        if (!$doctor) {
+        if (!$doctorModel) {
             return null;
         }
 
         $checkDate = $date ?: date('Y-m-d');
-        $leaveStmt = $this->pdo->prepare("
-            SELECT COUNT(*) FROM doctor_leaves 
-            WHERE doctor_id = ? AND status = 'Approved' 
-            AND ? BETWEEN start_date AND end_date
-        ");
-        $leaveStmt->execute([$doctorId, $checkDate]);
-        $isOnLeave = $leaveStmt->fetchColumn() > 0;
+        $isOnLeave = DoctorLeave::isDoctorOnLeave($doctorId, $checkDate);
 
         return [
-            'doctor' => $doctor,
+            'doctor' => [
+                'doctor_id'        => $doctorModel->doctor_id,
+                'name'             => $doctorModel->name,
+                'specialization'   => $doctorModel->specialization,
+                'phone'            => $doctorModel->phone,
+                'email'            => $doctorModel->email,
+                'consultation_fee' => $doctorModel->consultation_fee,
+            ],
             'checkDate' => $checkDate,
             'isAvailable' => !$isOnLeave,
             'status' => $isOnLeave ? 'On Leave' : 'Available'

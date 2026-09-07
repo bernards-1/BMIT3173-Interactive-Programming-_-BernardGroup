@@ -1,8 +1,11 @@
 <?php
-
+// Views/Doctor/schedule.php
 
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/Doctor.php';
+require_once '../../Models/Appointment.php';
+require_once '../../Models/Prescription.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -20,12 +23,11 @@ if (!function_exists('e')) {
     }
 }
 
-// Get the correct doctor_id and name
+// Get the correct doctor_id and name via ORM
 $user_id = $_SESSION['user_id'] ?? $_SESSION['user']['user_id'];
-$stmt = $pdo->prepare('SELECT doctor_id, name FROM doctors WHERE user_id = ?');
-$stmt->execute([$user_id]);
-$doctor = $stmt->fetch();
-$doctor_id = $doctor ? $doctor['doctor_id'] : 'D001';
+$doctorMatches = Doctor::where('user_id', $user_id);
+$doctor = $doctorMatches[0] ?? null;
+$doctor_id = $doctor ? $doctor->doctor_id : 'D001';
 
 // Fetch medicines list via Web Service Consumption (IFA Standard)
 $medicines_list = [];
@@ -59,10 +61,10 @@ if ($api_response) {
     }
 }
 
-// Fallback to direct DB query if Web Service is offline or times out
+// Fallback to ORM Model if Web Service is offline or times out
 if (empty($medicines_list)) {
-    $med_stmt = $pdo->query('SELECT medicine_id, brand_name, generic_name FROM medicines ORDER BY brand_name');
-    $medicines_list = $med_stmt->fetchAll();
+    require_once __DIR__ . '/../../Models/Medicine.php';
+    $medicines_list = array_map(function($m) { return $m->toArray(); }, Medicine::all());
 }
 
 // Handle form submission to Complete Consultation (same as mainpage.php!)
@@ -74,26 +76,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $follow_up_date = !empty($_POST['follow_up_date']) ? $_POST['follow_up_date'] : null;
     $follow_up_time = !empty($_POST['follow_up_time']) ? $_POST['follow_up_time'] : null;
     
-    // 1. Get the patient_id and doctor_id from the appointment
-    $appt_stmt = $pdo->prepare('SELECT patient_id, doctor_id FROM appointments WHERE appointment_id = ?');
-    $appt_stmt->execute([$appt_id]);
-    $appt_info = $appt_stmt->fetch();
+    // 1. Get the patient_id and doctor_id from the appointment via ORM
+    require_once '../../Models/Appointment.php';
+    $appt_info = Appointment::find($appt_id);
     
     if ($appt_info) {
-        $patient_id = $appt_info['patient_id'];
-        $doctor_id = $appt_info['doctor_id'];
+        $patient_id = $appt_info->patient_id;
+        $doctor_id = $appt_info->doctor_id;
         
-        // Generate a new medical record ID (e.g. MR002)
-        $count_stmt = $pdo->query('SELECT COUNT(*) FROM medical_records');
-        $mr_count = $count_stmt->fetchColumn() + 1;
-        $medical_record_id = 'MR' . str_pad($mr_count, 3, '0', STR_PAD_LEFT);
-        
-        // 2. Insert into medical_records
-        $ins_mr = $pdo->prepare('
-            INSERT INTO medical_records (medical_record_id, patient_id, doctor_id, appointment_id, diagnosis, symptoms, notes, follow_up_date) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ');
-        $ins_mr->execute([$medical_record_id, $patient_id, $doctor_id, $appt_id, $diagnosis, $symptoms, $notes, $follow_up_date]);
+        // 2. Create medical record via ORM (auto-generates medical_record_id)
+        require_once '../../Models/MedicalRecord.php';
+        $medical_record_id = MedicalRecord::createForConsultation(
+            $patient_id, $doctor_id, $appt_id, $diagnosis, $symptoms, $notes, $follow_up_date
+        )->medical_record_id;
         
         // 3. Update appointment status to 'Completed' using State Pattern
         require_once '../../Models/Appointment.php';
@@ -121,39 +116,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $instructions = isset($instructions_list[$i]) ? trim($instructions_list[$i]) : '';
                 $quantity = isset($quantities[$i]) ? (int)$quantities[$i] : 30;
                 
-                // Generate prescription ID (e.g. PR002)
-                $count_pr_stmt = $pdo->query('SELECT COUNT(*) FROM prescriptions');
-                $pr_count = $count_pr_stmt->fetchColumn() + 1;
-                $prescription_id = 'PR' . str_pad($pr_count, 3, '0', STR_PAD_LEFT);
+                // Generate prescription ID (e.g. PR002) and insert via ORM
+                require_once '../../Models/Prescription.php';
+                $pr_count = Prescription::count() + 1;
+                $prescription_id = 'PR' . str_pad((string) $pr_count, 3, '0', STR_PAD_LEFT);
                 
-                $ins_pr = $pdo->prepare('
-                    INSERT INTO prescriptions (prescription_id, record_id, medicine_id, dosage, frequency, duration, instructions, quantity) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ');
-                $ins_pr->execute([$prescription_id, $medical_record_id, $med_id, $dosage, $frequency, $duration, $instructions, $quantity]);
+                $prescription = new Prescription([
+                    'prescription_id' => $prescription_id,
+                    'record_id'       => $medical_record_id,
+                    'medicine_id'     => $med_id,
+                    'dosage'          => $dosage,
+                    'frequency'       => $frequency,
+                    'duration'        => $duration,
+                    'instructions'    => $instructions,
+                    'quantity'        => $quantity,
+                ], false);
+                $prescription->save();
             }
         }
         
         // 5. If follow up date is set, automatically make a new appointment for the patient!
         if ($follow_up_date) {
-            // Get original appointment time to reuse for follow-up
-            $orig_time_stmt = $pdo->prepare('SELECT appointment_time FROM appointments WHERE appointment_id = ?');
-            $orig_time_stmt->execute([$appt_id]);
-            $orig_time = $orig_time_stmt->fetchColumn();
-            if (!$orig_time) {
-                $orig_time = '10:00:00';
-            }
+            // Get original appointment time to reuse for follow-up via ORM
+            $orig_time = $appt_info->appointment_time ?: '10:00:00';
             
-            // Generate appointment ID (e.g. A006)
-            $count_appt_stmt = $pdo->query('SELECT COUNT(*) FROM appointments');
-            $appt_count = $count_appt_stmt->fetchColumn() + 1;
-            $new_appt_id = 'A' . str_pad($appt_count, 3, '0', STR_PAD_LEFT);
+            // Generate appointment ID (e.g. A006) and insert via ORM
+            $appt_count = Appointment::count() + 1;
+            $new_appt_id = 'A' . str_pad((string) $appt_count, 3, '0', STR_PAD_LEFT);
             
-            $ins_appt = $pdo->prepare('
-                INSERT INTO appointments (appointment_id, patient_id, doctor_id, appointment_date, appointment_time, reason, status) 
-                VALUES (?, ?, ?, ?, ?, \'Follow-up\', \'Scheduled\')
-            ');
-            $ins_appt->execute([$new_appt_id, $patient_id, $doctor_id, $follow_up_date, $orig_time]);
+            $followUpAppt = new Appointment([
+                'appointment_id'   => $new_appt_id,
+                'patient_id'       => $patient_id,
+                'doctor_id'        => $doctor_id,
+                'appointment_date' => $follow_up_date,
+                'appointment_time' => $orig_time,
+                'reason'           => 'Follow-up',
+                'status'           => 'Scheduled',
+            ], false);
+            $followUpAppt->save();
         }
         
         // Success redirect to schedule page
@@ -163,22 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // Fetch all appointments for the doctor to group them for JS calendar dots
-$appt_stmt = $pdo->prepare('
-    SELECT 
-        a.appointment_id, 
-        a.appointment_date, 
-        a.appointment_time, 
-        a.reason, 
-        a.status, 
-        p.patient_id, 
-        p.full_name 
-    FROM appointments a 
-    JOIN patients p ON a.patient_id = p.patient_id 
-    WHERE a.doctor_id = ? 
-    ORDER BY a.appointment_time ASC
-');
-$appt_stmt->execute([$doctor_id]);
-$appointments = $appt_stmt->fetchAll();
+$appointments = Appointment::getForDoctorSchedule($doctor_id);
 
 $js_appointments = [];
 foreach ($appointments as $appt) {
@@ -217,31 +202,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $custom_reason = isset($_POST['leave_reason']) ? trim($_POST['leave_reason']) : '';
     $reason = "[{$leave_type}] {$custom_reason}";
     
-    // Generate leave ID (e.g. DL002)
-    $count_l_stmt = $pdo->query('SELECT COUNT(*) FROM doctor_leaves');
-    $l_count = $count_l_stmt->fetchColumn() + 1;
-    $leave_id = 'DL' . str_pad($l_count, 3, '0', STR_PAD_LEFT);
-    
-    $ins_leave = $pdo->prepare('
-        INSERT INTO doctor_leaves (leave_id, doctor_id, start_date, end_date, reason, status) 
-        VALUES (?, ?, ?, ?, ?, \'Pending\')
-    ');
-    $ins_leave->execute([$leave_id, $doctor_id, $start_date, $end_date, $reason]);
+    // Create leave request via ORM (auto-generates leave_id, saves as Pending)
+    require_once '../../Models/DoctorLeave.php';
+    DoctorLeave::request($doctor_id, $start_date, $end_date, $reason);
     
     // Success redirect
     header('Location: schedule.php?leave_success=1');
     exit;
 }
 
-// Fetch leave history list for the modal
-$leave_stmt = $pdo->prepare('
-    SELECT start_date, end_date, reason, status, reject_reason, created_at 
-    FROM doctor_leaves 
-    WHERE doctor_id = ? 
-    ORDER BY created_at DESC
-');
-$leave_stmt->execute([$doctor_id]);
-$leave_history = $leave_stmt->fetchAll();
+// Fetch leave history list for the modal via ORM
+require_once '../../Models/DoctorLeave.php';
+$leave_history = DoctorLeave::historyForDoctor($doctor_id);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -546,7 +518,7 @@ $leave_history = $leave_stmt->fetchAll();
             <!-- Leave Management Card -->
             <div class="leave-card" style="margin-bottom: 24px;">
                 <h3 class="leave-card-title">Leave Management</h3>
-                <p class="leave-card-desc">You have <span style="font-weight:700;">12 days</span> of annual leave remaining for 2024.</p>
+                <p class="leave-card-desc">Submit leave requests and view your request history.</p>
                 <div style="display: flex; gap: 10px;">
                     <button class="btn-primary" style="background-color: #2563eb; flex: 1.2; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; color: var(--white); cursor: pointer;" onclick="openLeaveModal()">
                         Request Leave
@@ -1206,12 +1178,6 @@ function closeLeaveHistoryModal() {
                 <p class="leave-modal-subtitle">Submit a leave request to admin for approval</p>
             </div>
             <i class="fa-solid fa-xmark close-modal-icon" onclick="closeLeaveModal()"></i>
-        </div>
-        
-        <!-- Remaining Days Alert Banner -->
-        <div class="leave-modal-banner-days">
-            <span>Annual leave remaining</span>
-            <strong style="color: #2563eb; font-size: 16px;">12 days</strong>
         </div>
         
         <!-- Form -->

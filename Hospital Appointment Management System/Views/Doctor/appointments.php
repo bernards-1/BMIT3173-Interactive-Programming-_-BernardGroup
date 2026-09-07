@@ -1,6 +1,9 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/Doctor.php';
+require_once '../../Models/Appointment.php';
+require_once '../../Models/MedicalRecord.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -24,65 +27,30 @@ function getAge($dob) {
     return $birthdate->diff($today)->y;
 }
 
-// Get the correct doctor_id and name
+// Get the correct doctor_id and name via ORM
 $user_id = $_SESSION['user']['user_id'] ?? $_SESSION['user_id'] ?? null;
-$stmt = $pdo->prepare('SELECT doctor_id, name FROM doctors WHERE user_id = ?');
-$stmt->execute([$user_id]);
-$doctor = $stmt->fetch();
-$doctor_id = $doctor ? $doctor['doctor_id'] : 'D001';
+$doctorMatches = Doctor::where('user_id', $user_id);
+$doctor = $doctorMatches[0] ?? null;
+$doctor_id = $doctor ? $doctor->doctor_id : 'D001';
 
 // Fetch stats dynamically
 // Today count
-$today_stmt = $pdo->prepare('SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND appointment_date = CURDATE()');
-$today_stmt->execute([$doctor_id]);
-$today_count = $today_stmt->fetchColumn();
+$today_count = Appointment::getTodayCountForDoctor($doctor_id);
 
 // Completed count
-$completed_stmt = $pdo->prepare('SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND status = \'Completed\'');
-$completed_stmt->execute([$doctor_id]);
-$completed_count = $completed_stmt->fetchColumn();
+$completed_count = Appointment::getCountForDoctor($doctor_id, 'Completed');
 
 // Upcoming (Scheduled) count
-$upcoming_stmt = $pdo->prepare('SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND status = \'Scheduled\'');
-$upcoming_stmt->execute([$doctor_id]);
-$upcoming_count = $upcoming_stmt->fetchColumn();
+$upcoming_count = Appointment::getCountForDoctor($doctor_id, 'Scheduled');
 
 // Cancelled count
-$cancelled_stmt = $pdo->prepare('SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND status = \'Cancelled\'');
-$cancelled_stmt->execute([$doctor_id]);
-$cancelled_count = $cancelled_stmt->fetchColumn();
+$cancelled_count = Appointment::getCountForDoctor($doctor_id, 'Cancelled');
 
 // Prescribed count (medical records of this doctor that have at least one prescription)
-$prescribed_stmt = $pdo->prepare('
-    SELECT COUNT(DISTINCT mr.appointment_id) 
-    FROM medical_records mr 
-    JOIN prescriptions pr ON mr.medical_record_id = pr.record_id
-    WHERE mr.doctor_id = ?
-');
-$prescribed_stmt->execute([$doctor_id]);
-$prescribed_count = $prescribed_stmt->fetchColumn();
+$prescribed_count = MedicalRecord::getPrescribedApptCountForDoctor($doctor_id);
 
 // Fetch appointments list
-$list_stmt = $pdo->prepare('
-    SELECT 
-        a.appointment_id,
-        a.appointment_date,
-        a.appointment_time,
-        a.reason,
-        a.status,
-        p.patient_id,
-        p.full_name,
-        p.date_of_birth,
-        mr.medical_record_id,
-        (SELECT COUNT(*) FROM prescriptions pr WHERE pr.record_id = mr.medical_record_id) as prescription_count
-    FROM appointments a
-    JOIN patients p ON a.patient_id = p.patient_id
-    LEFT JOIN medical_records mr ON a.appointment_id = mr.appointment_id
-    WHERE a.doctor_id = ?
-    ORDER BY a.appointment_date ASC, a.appointment_time ASC
-');
-$list_stmt->execute([$doctor_id]);
-$appointments = $list_stmt->fetchAll();
+$appointments = Appointment::getListForDoctor($doctor_id);
 
 // Helper function to check if appointment is expired and update status
 function checkAndMarkExpired($pdo, $appointment_id, $appointment_date, $current_status) {

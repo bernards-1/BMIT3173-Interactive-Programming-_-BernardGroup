@@ -1,7 +1,5 @@
 <?php
-/**
- * Patient Module Controller
- */
+// Controllers/PatientController.php
 
 require_once __DIR__ . '/../Models/Doctor.php';
 require_once __DIR__ . '/../Models/PatientRepository.php';

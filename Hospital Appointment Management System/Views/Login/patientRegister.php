@@ -1,5 +1,7 @@
 <?php
 require_once '../../db.php';
+require_once '../../Models/User.php';
+require_once '../../Models/Patient.php';
 
 $error = '';
 $success = false;
@@ -27,61 +29,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Keep username exactly as full name (including spaces)
         $username = $full_name;
         
-        // Check if username already exists and append a suffix if it does
-        $chk_username = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
-        $chk_username->execute([$username]);
-        if ($chk_username->fetchColumn() > 0) {
+        // Check if username already exists via ORM and append a suffix if it does
+        if (User::count('username', $username) > 0) {
             $username .= ' ' . rand(100, 999);
         }
 
-        // Check if email already exists
-        $chk = $pdo->prepare("SELECT COUNT(*) FROM users WHERE email = ?");
-        $chk->execute([$email]);
-        if ($chk->fetchColumn() > 0) {
+        // Check if email already exists via ORM
+        if (User::count('email', $email) > 0) {
             $error = 'Email is already registered.';
         } else {
             $pdo->beginTransaction();
             try {
-                // Generate next User ID
-                $count_user = $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+                // Generate next User ID (uniqueness check via ORM)
+                $count_user = User::count();
                 $new_user_id = 'U' . str_pad($count_user + 1, 3, '0', STR_PAD_LEFT);
-                while (true) {
-                    $check_stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE user_id = ?');
-                    $check_stmt->execute([$new_user_id]);
-                    if ($check_stmt->fetchColumn() == 0) {
-                        break;
-                    }
+                while (User::count('user_id', $new_user_id) > 0) {
                     $count_user++;
                     $new_user_id = 'U' . str_pad($count_user + 1, 3, '0', STR_PAD_LEFT);
                 }
                 
-                // Generate next Patient ID
-                $count_patient = $pdo->query('SELECT COUNT(*) FROM patients')->fetchColumn();
+                // Generate next Patient ID (uniqueness check via ORM)
+                $count_patient = Patient::count();
                 $new_patient_id = 'P' . str_pad($count_patient + 1, 3, '0', STR_PAD_LEFT);
-                while (true) {
-                    $check_stmt = $pdo->prepare('SELECT COUNT(*) FROM patients WHERE patient_id = ?');
-                    $check_stmt->execute([$new_patient_id]);
-                    if ($check_stmt->fetchColumn() == 0) {
-                        break;
-                    }
+                while (Patient::count('patient_id', $new_patient_id) > 0) {
                     $count_patient++;
                     $new_patient_id = 'P' . str_pad($count_patient + 1, 3, '0', STR_PAD_LEFT);
                 }
                 
-                // 1. Insert into users table (is_active = 0)
+                // 1. Insert into users table via ORM (is_active = 0)
                 $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-                $ins_user = $pdo->prepare("
-                    INSERT INTO users (user_id, username, email, password, role, is_active) 
-                    VALUES (?, ?, ?, ?, 'patient', 0)
-                ");
-                $ins_user->execute([$new_user_id, $username, $email, $hashed_password]);
+                $newUser = new User([
+                    'user_id'   => $new_user_id,
+                    'username'  => $username,
+                    'email'     => $email,
+                    'password'  => $hashed_password,
+                    'role'      => 'patient',
+                    'is_active' => 0,
+                ], false);
+                $newUser->save();
                 
-                // 2. Insert into patients table (blood_type is omitted, setting to null)
-                $ins_patient = $pdo->prepare("
-                    INSERT INTO patients (patient_id, user_id, ic, full_name, date_of_birth, gender, phone, blood_type, address, emergency_contact_name, emergency_contact_phone) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
-                ");
-                $ins_patient->execute([$new_patient_id, $new_user_id, $ic, $full_name, $date_of_birth, $gender, $phone, $address, $emergency_contact_name, $emergency_contact_phone]);
+                // 2. Insert into patients table via ORM (blood_type is omitted, setting to null)
+                $newPatient = new Patient([
+                    'patient_id'              => $new_patient_id,
+                    'user_id'                 => $new_user_id,
+                    'ic'                      => $ic,
+                    'full_name'               => $full_name,
+                    'date_of_birth'           => $date_of_birth,
+                    'gender'                  => $gender,
+                    'phone'                   => $phone,
+                    'blood_type'              => null,
+                    'address'                 => $address,
+                    'emergency_contact_name'  => $emergency_contact_name,
+                    'emergency_contact_phone' => $emergency_contact_phone,
+                ], false);
+                $newPatient->save();
                 
                 $pdo->commit();
                 

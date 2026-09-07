@@ -8,19 +8,22 @@ class Pharmacy {
     // =========================================================
 
     /**
-     * Get pharmacist details by user_id (from session).
+     * Get pharmacist details by user_id (from session) via ORM.
+     * Returns an array (username/email merged in) to keep existing
+     * $pharmacist['field'] call sites unchanged.
      */
     public static function getPharmacistByUserId($user_id) {
-        global $pdo;
-        $stmt = $pdo->prepare('
-            SELECT ph.*, u.username, u.email
-            FROM pharmacists ph
-            JOIN users u ON u.user_id = ph.user_id
-            WHERE ph.user_id = ?
-            LIMIT 1
-        ');
-        $stmt->execute([$user_id]);
-        return $stmt->fetch();
+        require_once __DIR__ . '/Pharmacist.php';
+        $matches = Pharmacist::where('user_id', $user_id);
+        $pharmacistModel = $matches[0] ?? null;
+        if (!$pharmacistModel) {
+            return false;
+        }
+        $data = $pharmacistModel->toArray();
+        $user = $pharmacistModel->getUser();
+        $data['username'] = $user->username ?? null;
+        $data['email'] = $user->email ?? null;
+        return $data;
     }
 
     // =========================================================
@@ -375,34 +378,36 @@ class Pharmacy {
                     $payment_method = 'Cash';
                 }
 
-                // Check existing payment entry for this appointment
-                $payChk = $pdo->prepare('SELECT payment_id, invoice_no FROM payments WHERE appointment_id = ?');
-                $payChk->execute([$appointmentId]);
-                $existingPay = $payChk->fetch();
+                // Check existing payment entry for this appointment via ORM
+                require_once __DIR__ . '/Payment.php';
+                $existingPayMatches = Payment::where('appointment_id', $appointmentId);
+                $existingPay = $existingPayMatches[0] ?? null;
 
                 if ($existingPay) {
-                    $invNo = $existingPay['invoice_no'];
-                    // Update existing payment record to Paid
-                    $payUpd = $pdo->prepare('
-                        UPDATE payments
-                        SET amount = ?,
-                            payment_method = ?,
-                            payment_status = "Paid",
-                            payment_date = ?
-                        WHERE appointment_id = ?
-                    ');
-                    $payUpd->execute([$totalBillAmount, $payment_method, $now, $appointmentId]);
+                    $invNo = $existingPay->invoice_no;
+                    // Update existing payment record to Paid via ORM
+                    $existingPay->amount = $totalBillAmount;
+                    $existingPay->payment_method = $payment_method;
+                    $existingPay->payment_status = 'Paid';
+                    $existingPay->payment_date = $now;
+                    $existingPay->save();
                 } else {
-                    // Insert new payment record
+                    // Insert new payment record via ORM
                     $payCount = (int)$pdo->query("SELECT COUNT(*) FROM payments")->fetchColumn() + 1;
                     $payId = 'PA' . str_pad($payCount, 3, '0', STR_PAD_LEFT);
                     $invNo = 'INV-' . date('Y') . '-' . str_pad($payCount, 4, '0', STR_PAD_LEFT);
 
-                    $payIns = $pdo->prepare('
-                        INSERT INTO payments (payment_id, appointment_id, patient_id, amount, payment_method, payment_status, payment_date, invoice_no)
-                        VALUES (?, ?, ?, ?, ?, "Paid", ?, ?)
-                    ');
-                    $payIns->execute([$payId, $appointmentId, $patientId, $totalBillAmount, $payment_method, $now, $invNo]);
+                    $newPayment = new Payment([
+                        'payment_id'     => $payId,
+                        'appointment_id' => $appointmentId,
+                        'patient_id'     => $patientId,
+                        'amount'         => $totalBillAmount,
+                        'payment_method' => $payment_method,
+                        'payment_status' => 'Paid',
+                        'payment_date'   => $now,
+                        'invoice_no'     => $invNo,
+                    ], false);
+                    $newPayment->save();
                 }
 
                 // Fetch names & detailed medicine lines for receipt
@@ -608,24 +613,25 @@ class Pharmacy {
     }
 
     /**
-     * Get a single medicine by ID.
+     * Get a single medicine by ID via ORM (toArray() keeps the existing
+     * array-access call sites unchanged, e.g. $updatedMed['stock_quantity']).
      */
     public static function getMedicineById($medicine_id) {
-        global $pdo;
-        $stmt = $pdo->prepare('SELECT * FROM medicines WHERE medicine_id = ? LIMIT 1');
-        $stmt->execute([$medicine_id]);
-        return $stmt->fetch();
+        require_once __DIR__ . '/Medicine.php';
+        $medicine = Medicine::find($medicine_id);
+        return $medicine ? $medicine->toArray() : false;
     }
 
     /**
-     * Add a new medicine to inventory.
+     * Add a new medicine to inventory via ORM.
      * Auto-generates medicine_id as M + zero-padded number.
      */
     public static function addMedicine($data) {
-        global $pdo;
+        require_once __DIR__ . '/Medicine.php';
+        $db = static::getDb();
 
-        // Generate next medicine_id
-        $stmt = $pdo->query("SELECT medicine_id FROM medicines ORDER BY medicine_id DESC LIMIT 1");
+        // Generate next medicine_id (kept raw — ORDER BY isn't ORM-supported)
+        $stmt = $db->query("SELECT medicine_id FROM medicines ORDER BY medicine_id DESC LIMIT 1");
         $last = $stmt->fetch();
         if ($last) {
             $num = (int)substr($last['medicine_id'], 1) + 1;
@@ -634,76 +640,57 @@ class Pharmacy {
         }
         $new_id = 'M' . str_pad($num, 3, '0', STR_PAD_LEFT);
 
-        $stmt = $pdo->prepare('
-            INSERT INTO medicines
-                (medicine_id, brand_name, generic_name, dosage, category, unit_type, manufacturer,
-                 stock_quantity, minimum_stock, unit_price, expiry_date, description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ');
-
-        return $stmt->execute([
-            $new_id,
-            $data['brand_name'],
-            $data['generic_name'],
-            $data['dosage'],
-            $data['category'],
-            $data['unit_type'],
-            $data['manufacturer'] ?? null,
-            (int)$data['stock_quantity'],
-            (int)$data['minimum_stock'],
-            (float)$data['unit_price'],
-            $data['expiry_date'] ?? null,
-            $data['description'] ?? null,
-        ]);
+        $medicine = new Medicine([
+            'medicine_id'    => $new_id,
+            'brand_name'     => $data['brand_name'],
+            'generic_name'   => $data['generic_name'],
+            'dosage'         => $data['dosage'],
+            'category'       => $data['category'],
+            'unit_type'      => $data['unit_type'],
+            'manufacturer'   => $data['manufacturer'] ?? null,
+            'stock_quantity' => (int)$data['stock_quantity'],
+            'minimum_stock'  => (int)$data['minimum_stock'],
+            'unit_price'     => (float)$data['unit_price'],
+            'expiry_date'    => $data['expiry_date'] ?? null,
+            'description'    => $data['description'] ?? null,
+        ], false);
+        return $medicine->save(); // ORM insert
     }
 
     /**
-     * Update medicine details.
+     * Update medicine details via ORM.
      */
     public static function updateMedicine($medicine_id, $data) {
-        global $pdo;
-        $stmt = $pdo->prepare('
-            UPDATE medicines
-            SET brand_name     = ?,
-                generic_name   = ?,
-                dosage         = ?,
-                category       = ?,
-                unit_type      = ?,
-                manufacturer   = ?,
-                stock_quantity = ?,
-                minimum_stock  = ?,
-                unit_price     = ?,
-                expiry_date    = ?,
-                description    = ?
-            WHERE medicine_id = ?
-        ');
-        return $stmt->execute([
-            $data['brand_name'],
-            $data['generic_name'],
-            $data['dosage'],
-            $data['category'],
-            $data['unit_type'],
-            $data['manufacturer'] ?? null,
-            (int)$data['stock_quantity'],
-            (int)$data['minimum_stock'],
-            (float)$data['unit_price'],
-            $data['expiry_date'] ?? null,
-            $data['description'] ?? null,
-            $medicine_id,
-        ]);
+        require_once __DIR__ . '/Medicine.php';
+        $medicine = Medicine::find($medicine_id);
+        if (!$medicine) {
+            return false;
+        }
+        $medicine->brand_name = $data['brand_name'];
+        $medicine->generic_name = $data['generic_name'];
+        $medicine->dosage = $data['dosage'];
+        $medicine->category = $data['category'];
+        $medicine->unit_type = $data['unit_type'];
+        $medicine->manufacturer = $data['manufacturer'] ?? null;
+        $medicine->stock_quantity = (int)$data['stock_quantity'];
+        $medicine->minimum_stock = (int)$data['minimum_stock'];
+        $medicine->unit_price = (float)$data['unit_price'];
+        $medicine->expiry_date = $data['expiry_date'] ?? null;
+        $medicine->description = $data['description'] ?? null;
+        return $medicine->save(); // ORM update
     }
 
     /**
-     * Restock a medicine (add to existing stock).
+     * Restock a medicine (add to existing stock) via the Medicine ORM's
+     * own restock() domain method.
      */
     public static function restockMedicine($medicine_id, $qty_to_add) {
-        global $pdo;
-        $stmt = $pdo->prepare('
-            UPDATE medicines
-            SET stock_quantity = stock_quantity + ?
-            WHERE medicine_id = ?
-        ');
-        return $stmt->execute([(int)$qty_to_add, $medicine_id]);
+        require_once __DIR__ . '/Medicine.php';
+        $medicine = Medicine::find($medicine_id);
+        if (!$medicine) {
+            return false;
+        }
+        return $medicine->restock((int)$qty_to_add);
     }
 
     /**
@@ -734,18 +721,16 @@ class Pharmacy {
     }
 
     /**
-     * Delete a medicine by ID.
+     * Delete a medicine by ID via ORM.
      * Returns false if the medicine has linked prescriptions (to prevent FK violation).
      */
     public static function deleteMedicine($medicine_id) {
-        global $pdo;
+        require_once __DIR__ . '/Prescription.php';
+        require_once __DIR__ . '/Medicine.php';
         // Safety check: block deletion if prescriptions reference this medicine
-        $check = $pdo->prepare('SELECT COUNT(*) FROM prescriptions WHERE medicine_id = ?');
-        $check->execute([$medicine_id]);
-        if ((int)$check->fetchColumn() > 0) {
+        if (Prescription::count('medicine_id', $medicine_id) > 0) {
             return false;
         }
-        $stmt = $pdo->prepare('DELETE FROM medicines WHERE medicine_id = ?');
-        return $stmt->execute([$medicine_id]);
+        return Medicine::delete($medicine_id);
     }
 }

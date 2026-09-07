@@ -1,7 +1,5 @@
 <?php
-/**
- * Pricing Calculation Service
- */
+// services/PricingService.php
 
 require_once __DIR__ . '/../Models/Doctor.php';
 require_once __DIR__ . '/../Models/PricingStrategy.php';

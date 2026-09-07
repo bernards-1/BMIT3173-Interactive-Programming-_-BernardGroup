@@ -2,6 +2,8 @@
 require_once '../../db.php';
 require_once '../../Models/User.php';
 require_once '../../Models/Pharmacy.php';
+require_once '../../Models/Pharmacist.php';
+require_once '../../Models/Prescription.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -22,16 +24,21 @@ if (!function_exists('e')) {
 
 $id = $_SESSION['user_id'] ?? $_SESSION['user']['user_id'];
 
-// Fetch pharmacist details
-$pharmacist_stmt = $pdo->prepare('
-    SELECT ph.*, u.username, u.email
-    FROM pharmacists ph
-    JOIN users u ON u.user_id = ph.user_id
-    WHERE ph.user_id = ?
-    LIMIT 1
-');
-$pharmacist_stmt->execute([$id]);
-$pharmacist = $pharmacist_stmt->fetch();
+// Fetch pharmacist details via ORM (username/email come from the object reference)
+function loadPharmacistProfileArray($id) {
+    $pharmacistMatches = Pharmacist::where('user_id', $id);
+    $pharmacistModel = $pharmacistMatches[0] ?? null;
+    if (!$pharmacistModel) {
+        return null;
+    }
+    $data = $pharmacistModel->toArray();
+    $user = $pharmacistModel->getUser();
+    $data['username'] = $user->username ?? null;
+    $data['email'] = $user->email ?? null;
+    return $data;
+}
+
+$pharmacist = loadPharmacistProfileArray($id);
 
 if (!$pharmacist) {
     die("Pharmacist profile not found.");
@@ -62,30 +69,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $username = $full_name;
                 
                 // Check if username already exists for another user
-                $chk_user = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ? AND user_id != ?");
-                $chk_user->execute([$username, $id]);
-                if ($chk_user->fetchColumn() > 0) {
+                if (User::usernameTakenByOther($username, $id)) {
                     $username .= ' ' . rand(100, 999);
                 }
 
                 // Check email uniqueness
-                $chk_email = $pdo->prepare("SELECT COUNT(*) FROM users WHERE email = ? AND user_id != ?");
-                $chk_email->execute([$email, $id]);
-                if ($chk_email->fetchColumn() > 0) {
+                if (User::emailTakenByOther($email, $id)) {
                     throw new Exception('Email address is already in use by another account.');
                 }
 
-                // Update users table
-                $upd_user = $pdo->prepare("UPDATE users SET email = ?, username = ? WHERE user_id = ?");
-                $upd_user->execute([$email, $username, $id]);
+                // Update users table via ORM
+                $userAccount = User::find($id);
+                $userAccount->email = $email;
+                $userAccount->username = $username;
+                $userAccount->save();
                 
-                // Update pharmacists table
-                $upd_ph = $pdo->prepare("
-                    UPDATE pharmacists 
-                    SET full_name = ?, ic = ?, phone = ?, license_number = ?, qualification = ?
-                    WHERE pharmacist_id = ?
-                ");
-                $upd_ph->execute([$full_name, $ic, $phone, $license_number, $qualification, $pharmacist_id]);
+                // Update pharmacists table via ORM
+                $pharmacistModel = Pharmacist::find($pharmacist_id);
+                $pharmacistModel->full_name = $full_name;
+                $pharmacistModel->ic = $ic;
+                $pharmacistModel->phone = $phone;
+                $pharmacistModel->license_number = $license_number;
+                $pharmacistModel->qualification = $qualification;
+                $pharmacistModel->save();
                 
                 $pdo->commit();
                 
@@ -93,9 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user']['email'] = $email;
                 $_SESSION['user']['username'] = $username;
                 
-                // Refresh data
-                $pharmacist_stmt->execute([$id]);
-                $pharmacist = $pharmacist_stmt->fetch();
+                // Refresh data via ORM
+                $pharmacist = loadPharmacistProfileArray($id);
                 
                 $success = 'Pharmacist profile details updated successfully!';
             } catch (Exception $e) {
@@ -115,15 +120,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (strlen($new_pwd) < 6) {
             $error = 'New password must be at least 6 characters long.';
         } else {
-            // Fetch current password hash from users table
-            $user_stmt = $pdo->prepare("SELECT password FROM users WHERE user_id = ?");
-            $user_stmt->execute([$id]);
-            $hash = $user_stmt->fetchColumn();
+            // Fetch current password hash via ORM
+            $userAccount = User::find($id);
+            $hash = $userAccount ? $userAccount->password : null;
             
             if ($hash && password_verify($current_pwd, $hash)) {
-                $new_hash = password_hash($new_pwd, PASSWORD_DEFAULT);
-                $upd_pwd = $pdo->prepare("UPDATE users SET password = ? WHERE user_id = ?");
-                $upd_pwd->execute([$new_hash, $id]);
+                $userAccount->password = password_hash($new_pwd, PASSWORD_DEFAULT);
+                $userAccount->save();
                 $success = 'Password changed successfully!';
             } else {
                 $error = 'Incorrect current password.';
@@ -135,9 +138,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Fetch stats for side card
 $dispensedCount = Pharmacy::countDispensedToday();
 
-$stmt = $pdo->prepare("SELECT COUNT(DISTINCT record_id) FROM prescriptions WHERE is_dispensed = 1");
-$stmt->execute();
-$totalDispensedAllTime = $stmt->fetchColumn();
+// Single-column aggregate via ORM helper
+$totalDispensedAllTime = Prescription::countDistinct('record_id', 'is_dispensed', 1);
 
 $pendingCount = Pharmacy::countPendingPrescriptions();
 

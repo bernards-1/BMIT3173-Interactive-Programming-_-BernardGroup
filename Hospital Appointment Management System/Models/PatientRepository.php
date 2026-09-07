@@ -31,8 +31,8 @@ class PatientRepository
     {
         $this->pdo->beginTransaction();
         try {
-            $updUser = $this->pdo->prepare("UPDATE users SET email = ? WHERE user_id = ?");
-            $updUser->execute([$data['email'], $userId]);
+            $updUser = $this->pdo->prepare("UPDATE users SET email = ?, username = ? WHERE user_id = ?");
+            $updUser->execute([$data['email'], $data['full_name'], $userId]);
 
             $updPatient = $this->pdo->prepare("
                 UPDATE patients 
@@ -272,18 +272,14 @@ class PatientRepository
 
     public function getPaymentCount(): int
     {
-        $stmt = $this->pdo->query("SELECT COUNT(*) FROM payments");
-        return (int) $stmt->fetchColumn();
+        require_once __DIR__ . '/Payment.php';
+        return Payment::count();
     }
 
     public function paymentIdExists(string $paymentId): bool
     {
-        // Bound parameter — this replaces a previous version of this check that
-        // concatenated $pay_id directly into the SQL string, which was a real
-        // SQL Injection vulnerability in this file.
-        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM payments WHERE payment_id = ?");
-        $stmt->execute([$paymentId]);
-        return $stmt->fetchColumn() > 0;
+        require_once __DIR__ . '/Payment.php';
+        return Payment::count('payment_id', $paymentId) > 0;
     }
 
     /**
@@ -291,26 +287,34 @@ class PatientRepository
      */
     public function createAppointmentWithPayment(array $appointment, array $payment): bool
     {
+        require_once __DIR__ . '/Appointment.php';
+        require_once __DIR__ . '/Payment.php';
+
         $this->pdo->beginTransaction();
         try {
-            $stmt = $this->pdo->prepare("INSERT INTO appointments (appointment_id, patient_id, doctor_id, schedule_id, appointment_date, appointment_time, reason, status) VALUES (?, ?, ?, NULL, ?, ?, ?, 'Scheduled')");
-            $stmt->execute([
-                $appointment['appointment_id'],
-                $appointment['patient_id'],
-                $appointment['doctor_id'],
-                $appointment['appointment_date'],
-                $appointment['appointment_time'],
-                $appointment['reason'],
-            ]);
+            $appointmentModel = new Appointment([
+                'appointment_id'   => $appointment['appointment_id'],
+                'patient_id'       => $appointment['patient_id'],
+                'doctor_id'        => $appointment['doctor_id'],
+                'schedule_id'      => null,
+                'appointment_date' => $appointment['appointment_date'],
+                'appointment_time' => $appointment['appointment_time'],
+                'reason'           => $appointment['reason'],
+                'status'           => 'Scheduled',
+            ], false);
+            $appointmentModel->save(); // ORM insert
 
-            $payStmt = $this->pdo->prepare("INSERT INTO payments (payment_id, appointment_id, patient_id, amount, payment_method, payment_status, payment_date, invoice_no) VALUES (?, ?, ?, ?, 'Credit Card', 'Unpaid', NULL, ?)");
-            $payStmt->execute([
-                $payment['payment_id'],
-                $appointment['appointment_id'],
-                $appointment['patient_id'],
-                $payment['amount'],
-                $payment['invoice_no'],
-            ]);
+            $paymentModel = new Payment([
+                'payment_id'      => $payment['payment_id'],
+                'appointment_id'  => $appointment['appointment_id'],
+                'patient_id'      => $appointment['patient_id'],
+                'amount'          => $payment['amount'],
+                'payment_method'  => 'Credit Card',
+                'payment_status'  => 'Unpaid',
+                'payment_date'    => null,
+                'invoice_no'      => $payment['invoice_no'],
+            ], false);
+            $paymentModel->save(); // ORM insert
 
             $this->pdo->commit();
             return true;

@@ -18,7 +18,7 @@ $data = $controller->pharmacists();
         .header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
         .btn-primary { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 8px; }
         
-        /* === 新增的顶部布局区域 === */
+        /* Top Metric & Tab Controls */
         .tab-switcher { display: inline-flex; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px; margin-bottom: 24px; }
         .tab-btn { padding: 8px 16px; border: none; background: transparent; font-size: 14px; font-weight: 600; color: #64748b; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
         .tab-btn.active { background: #f8fafc; color: #0f172a; }
@@ -86,7 +86,7 @@ $data = $controller->pharmacists();
         <p style="font-size: 14px; color: #64748b;">Manage pharmacy staff profiles</p>
     </div>
 
-    <!-- 顶层卡片与搜索 -->
+    <!-- Summary Cards and Search Controls -->
 
     <div id="pharmacistsSection">
         <div class="status-summary-cards">
@@ -108,7 +108,6 @@ $data = $controller->pharmacists();
             <i class="fa-solid fa-magnifying-glass"></i>
             <input type="text" id="pharmaSearch" placeholder="Search pharmacists by name, ID, or shift...">
         </div>
-        <!-- /顶层卡片与搜索 -->
 
         <!-- Pharmacists Grid -->
         <div class="staff-grid" id="pharmaGrid">

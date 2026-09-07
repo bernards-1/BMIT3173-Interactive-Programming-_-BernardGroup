@@ -1,5 +1,7 @@
 <?php
 require_once '../../db.php';
+require_once '../../Models/Admin.php';
+require_once '../../Models/User.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -11,14 +13,8 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
 }
 
 $userId = $_SESSION['user_id'];
-$profileStmt = $pdo->prepare('
-    SELECT a.admin_id, a.full_name, a.phone, a.position, u.email, u.username
-    FROM admins a
-    JOIN users u ON u.user_id = a.user_id
-    WHERE a.user_id = ?
-');
-$profileStmt->execute([$userId]);
-$admin = $profileStmt->fetch();
+// Cross-table (admins + users) lookup stays raw; ORM handles the writes below.
+$admin = Admin::profileByUserId($userId);
 
 if (!$admin) {
     http_response_code(404);
@@ -42,13 +38,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 $pdo->beginTransaction();
-                $pdo->prepare('UPDATE users SET username = ?, email = ? WHERE user_id = ?')->execute([$name, $email, $userId]);
-                $pdo->prepare('UPDATE admins SET full_name = ?, phone = ?, position = ? WHERE user_id = ?')->execute([$name, $phone, $position, $userId]);
+
+                $userAccount = User::find($userId);
+                $userAccount->username = $name;
+                $userAccount->email = $email;
+                $userAccount->save(); // ORM update
+
+                $adminModel = Admin::findByUserId($userId);
+                $adminModel->full_name = $name;
+                $adminModel->phone = $phone;
+                $adminModel->position = $position;
+                $adminModel->save(); // ORM update
+
                 $pdo->commit();
                 $_SESSION['user']['username'] = $name;
                 $_SESSION['user']['email'] = $email;
-                $profileStmt->execute([$userId]);
-                $admin = $profileStmt->fetch();
+                $admin = Admin::profileByUserId($userId);
                 $success = 'Profile details updated successfully!';
             } catch (PDOException $exception) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
@@ -69,10 +74,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (strlen($newPassword) < 8) {
             $error = 'Your new password must contain at least 8 characters.';
         } else {
-            $passwordStmt = $pdo->prepare('SELECT password FROM users WHERE user_id = ?');
-            $passwordStmt->execute([$userId]);
-            if (password_verify($currentPassword, (string) $passwordStmt->fetchColumn())) {
-                $pdo->prepare('UPDATE users SET password = ? WHERE user_id = ?')->execute([password_hash($newPassword, PASSWORD_DEFAULT), $userId]);
+            // ORM lookup + save instead of manual SELECT/UPDATE
+            $userAccount = User::find($userId);
+            if ($userAccount && password_verify($currentPassword, (string) $userAccount->password)) {
+                $userAccount->password = password_hash($newPassword, PASSWORD_DEFAULT);
+                $userAccount->save();
                 $success = 'Password changed successfully!';
             } else {
                 $error = 'Your current password is incorrect.';

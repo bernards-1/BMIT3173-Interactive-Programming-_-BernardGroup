@@ -1,7 +1,5 @@
 <?php
-/**
- * Base Model implementing ActiveRecord ORM pattern
- */
+// core/Model.php
 
 if (!class_exists('Database')) {
     require_once __DIR__ . '/../db.php';
@@ -191,6 +189,45 @@ abstract class Model {
     }
 
     /**
+     * Count rows in the table, optionally filtered by a single column/value
+     * equality condition. Avoids hydrating full Model instances just to
+     * get a count (e.g. dashboard stat widgets).
+     */
+    public static function count(?string $column = null, $value = null): int {
+        $db = static::getDb();
+        $table = static::getTable();
+
+        if ($column === null) {
+            $stmt = $db->query("SELECT COUNT(*) FROM `{$table}`");
+            return (int) $stmt->fetchColumn();
+        }
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM `{$table}` WHERE `{$column}` = ?");
+        $stmt->execute([$value]);
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Count distinct values of a column, optionally filtered by another
+     * column/value equality condition (e.g. distinct patients per doctor).
+     */
+    public static function countDistinct(string $distinctColumn, ?string $whereColumn = null, $whereValue = null): int {
+        $db = static::getDb();
+        $table = static::getTable();
+
+        $sql = "SELECT COUNT(DISTINCT `{$distinctColumn}`) FROM `{$table}`";
+        $params = [];
+        if ($whereColumn !== null) {
+            $sql .= " WHERE `{$whereColumn}` = ?";
+            $params[] = $whereValue;
+        }
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
      * Create and persist a new model record.
      */
     public static function create(array $attributes): static {
@@ -294,7 +331,6 @@ abstract class Model {
 
     /**
      * Object Reference Helper: belongsTo
-     * Satisfies: "use object references instead of foreign keys to represent relationships"
      */
     public function belongsTo(string $relatedClass, ?string $foreignKey = null, ?string $ownerKey = null): ?object {
         if (!class_exists($relatedClass)) {

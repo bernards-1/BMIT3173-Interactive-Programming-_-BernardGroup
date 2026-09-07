@@ -1,7 +1,5 @@
 <?php
-/**
- * Doctor Model
- */
+// Models/Doctor.php
 
 require_once __DIR__ . '/../core/Model.php';
 require_once __DIR__ . '/User.php';
@@ -17,7 +15,6 @@ class Doctor extends Model {
 
     /**
      * Object Reference Getter: retrieves associated User entity instance.
-     * Fulfills report Section 3: Use object references instead of foreign keys.
      */
     public function getUser(): ?User {
         if ($this->userInstance === null && !empty($this->user_id)) {

@@ -1,6 +1,7 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/Doctor.php';
 require_once '../../Controllers/DoctorController.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -21,14 +22,15 @@ if (!function_exists('e')) {
 
 $id = $_SESSION['user_id'];
 
-// Fetch doctor details
-$doctor_stmt = $pdo->prepare('SELECT * FROM doctors WHERE user_id = ?');
-$doctor_stmt->execute([$id]);
-$doctor = $doctor_stmt->fetch();
+// Fetch doctor details via ORM (toArray() keeps the existing $doctor['field'] template below unchanged)
+$doctorMatches = Doctor::where('user_id', $id);
+$doctorModel = $doctorMatches[0] ?? null;
 
-if (!$doctor) {
+if (!$doctorModel) {
     die("Doctor profile not found.");
 }
+
+$doctor = $doctorModel->toArray();
 
 $doctor_id = $doctor['doctor_id'];
 
@@ -72,9 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user']['email'] = $email;
                 $_SESSION['user']['username'] = $result['username'];
                 
-                // Refresh data
-                $doctor_stmt->execute([$id]);
-                $doctor = $doctor_stmt->fetch();
+                // Refresh data via ORM
+                $doctorMatches = Doctor::where('user_id', $id);
+                $doctorModel = $doctorMatches[0] ?? null;
+                $doctor = $doctorModel ? $doctorModel->toArray() : $doctor;
                 
                 $success = 'Profile details updated successfully!';
             } catch (Exception $e) {
@@ -91,15 +94,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($new_pwd !== $confirm_pwd) {
             $error = 'New password and confirm password do not match.';
         } else {
-            // Fetch current password hash from users
-            $user_stmt = $pdo->prepare("SELECT password FROM users WHERE user_id = ?");
-            $user_stmt->execute([$id]);
-            $hash = $user_stmt->fetchColumn();
+            // Fetch current password hash via ORM
+            $userAccount = User::find($id);
+            $hash = $userAccount ? $userAccount->password : null;
             
             if ($hash && password_verify($current_pwd, $hash)) {
-                $new_hash = password_hash($new_pwd, PASSWORD_DEFAULT);
-                $upd_pwd = $pdo->prepare("UPDATE users SET password = ? WHERE user_id = ?");
-                $upd_pwd->execute([$new_hash, $id]);
+                $userAccount->password = password_hash($new_pwd, PASSWORD_DEFAULT);
+                $userAccount->save(); // ORM update
                 $success = 'Password changed successfully!';
             } else {
                 $error = 'Incorrect current password.';
@@ -108,18 +109,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch some statistics for doctor
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE doctor_id = ?");
-$stmt->execute([$doctor_id]);
-$total_appointments = $stmt->fetchColumn();
-
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM medical_records WHERE doctor_id = ?");
-$stmt->execute([$doctor_id]);
-$total_records = $stmt->fetchColumn();
-
-$stmt = $pdo->prepare("SELECT COUNT(DISTINCT patient_id) FROM appointments WHERE doctor_id = ?");
-$stmt->execute([$doctor_id]);
-$total_patients = $stmt->fetchColumn();
+// Fetch some statistics for doctor via ORM count helpers
+require_once '../../Models/Appointment.php';
+require_once '../../Models/MedicalRecord.php';
+$total_appointments = Appointment::count('doctor_id', $doctor_id);
+$total_records = MedicalRecord::count('doctor_id', $doctor_id);
+$total_patients = Appointment::countDistinct('patient_id', 'doctor_id', $doctor_id);
 ?>
 <!DOCTYPE html>
 <html lang="en">

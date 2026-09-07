@@ -31,12 +31,24 @@ class AppointmentSubsystem {
     }
 
     public function scheduleAppointment($appointmentId, $patientId, $doctorId, $date, $time, $reason) {
-        $stmt = $this->pdo->prepare("INSERT INTO appointments (appointment_id, patient_id, doctor_id, appointment_date, appointment_time, reason, status) VALUES (?, ?, ?, ?, ?, ?, 'Scheduled')");
-        return $stmt->execute([$appointmentId, $patientId, $doctorId, $date, $time, $reason]);
+        $appointment = new Appointment([
+            'appointment_id'   => $appointmentId,
+            'patient_id'       => $patientId,
+            'doctor_id'        => $doctorId,
+            'appointment_date' => $date,
+            'appointment_time' => $time,
+            'reason'           => $reason,
+            'status'           => 'Scheduled',
+        ], false);
+        return $appointment->save(); // ORM insert
     }
 
     public function updateAppointmentStatus($appointmentId, $status) {
-        $stmt = $this->pdo->prepare("UPDATE appointments SET status = ? WHERE appointment_id = ?");
-        return $stmt->execute([$status, $appointmentId]);
+        $appointment = Appointment::find($appointmentId);
+        if (!$appointment) {
+            return false;
+        }
+        $appointment->status = $status;
+        return $appointment->save(); // ORM update
     }
 }

@@ -25,23 +25,22 @@ $lowStockAlerts = ($pharmacyAlertResult['status'] === 'success' && isset($pharma
     
     <style>
         /* ==========================================
-           图表加载动画 (CSS Chart Animations)
+           CSS Chart Animations
            ========================================== */
         
-        /* 1. 柱状图平滑过渡动画 (Morphing Animation) */
+        /* 1. Bar Chart Transition Animation */
         .bar {
             transform-origin: bottom; 
-            /* 使用带有弹性的 cubic-bezier 曲线优化动画效果 */
             transition: height 0.8s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
         }
 
-        /* 柱子 Hover 悬停放大微交互 */
+        /* Hover interaction */
         .bar-group:hover .bar {
             filter: brightness(1.1);
             transition: filter 0.2s;
         }
 
-        /* 2. 饼图弹出旋转动画 */
+        /* 2. Pie Chart Pop Animation */
         @keyframes piePop {
             0% {
                 transform: scale(0.3) rotate(-90deg);
@@ -62,7 +61,7 @@ $lowStockAlerts = ($pharmacyAlertResult['status'] === 'success' && isset($pharma
         }
 
         .pie-chart:hover {
-            transform: scale(1.03); /* 鼠标悬停微放大 */
+            transform: scale(1.03);
         }
     </style>
 </head>
@@ -126,9 +125,9 @@ $lowStockAlerts = ($pharmacyAlertResult['status'] === 'success' && isset($pharma
         </div>
     </div>
     
-    <!-- Charts Section (带动画) -->
+    <!-- Charts Section -->
     <div class="dashboard-grid">
-        <!-- 动态柱状图 -->
+        <!-- Bar Chart Card -->
         <div class="card">
             <div class="card-header">
                 <div class="card-title">
@@ -186,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const yAxisLabels = document.getElementById('yAxisLabels');
     const toggleBtns = document.querySelectorAll('#chartToggle .toggle-btn');
     
-    // 初始化柱子结构，高度为 0%
+    // Initialize bars with 0% height
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
     months.forEach((month) => {
         const group = document.createElement('div');
@@ -229,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const dark = group.querySelector('.bar-dark');
             const light = group.querySelector('.bar-light');
             
-            // 产生一点交错进入的视觉效果
+            // Stagger animation entry
             setTimeout(() => {
                 dark.style.height = item.dark + '%';
                 light.style.height = item.light + '%';
@@ -237,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 事件监听
+    // Toggle event listeners
     toggleBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             toggleBtns.forEach(b => b.classList.remove('active'));
@@ -246,12 +245,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 初次加载动画
+    // Initial render animation
     setTimeout(() => updateChart('appointments'), 100);
 });
 </script>
 
-        <!-- 动态饼图 -->
+        <!-- Pie Chart Card -->
         <div class="card">
             <div class="card-header">
                 <div class="card-title">

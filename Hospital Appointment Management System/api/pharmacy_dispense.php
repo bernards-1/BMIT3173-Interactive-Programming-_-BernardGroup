@@ -47,21 +47,27 @@ try {
     if ($result) {
         $receipt = is_array($result) ? $result : null;
         echo json_encode([
-            'status' => 'success',
-            'message' => 'Prescription dispensed and payment collected successfully!',
-            'receipt' => $receipt
+            'status'     => 'success',
+            'ifa_status' => 'S',
+            'timestamp'  => date('Y-m-d H:i:s'),
+            'message'    => 'Prescription dispensed and payment collected successfully!',
+            'receipt'    => $receipt
         ]);
     } else {
         http_response_code(400);
         echo json_encode([
-            'status' => 'error',
-            'message' => 'Prescription already dispensed or not found.'
+            'status'     => 'error',
+            'ifa_status' => 'F',
+            'timestamp'  => date('Y-m-d H:i:s'),
+            'message'    => 'Prescription already dispensed or not found.'
         ]);
     }
 } catch (Exception $e) {
     http_response_code(500);
     echo json_encode([
-        'status' => 'error',
-        'message' => 'System error: ' . $e->getMessage()
+        'status'     => 'error',
+        'ifa_status' => 'E',
+        'timestamp'  => date('Y-m-d H:i:s'),
+        'message'    => 'System error: ' . $e->getMessage()
     ]);
 }

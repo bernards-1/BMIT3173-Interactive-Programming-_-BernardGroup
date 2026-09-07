@@ -1,12 +1,5 @@
 <?php
-/**
- * Admin Module Doctor Duty & Status Service
- * 
- * Contract Specification:
- * - Method: POST
- * - Content-Type: application/json
- * - Mandatory Fields: requestID, timestamp, doctorId, checkDate
- */
+// api/admin_doctor_status.php
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../Facades/AdminFacade.php';

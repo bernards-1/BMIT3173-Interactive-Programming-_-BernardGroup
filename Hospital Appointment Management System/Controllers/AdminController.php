@@ -6,6 +6,7 @@ require_once __DIR__ . '/../Models/Doctor.php';
 require_once __DIR__ . '/../Models/Patient.php';
 require_once __DIR__ . '/../Models/Appointment.php';
 require_once __DIR__ . '/../Models/Payment.php';
+require_once __DIR__ . '/../Models/User.php';
 
 class AdminController {
     private $facade;
@@ -41,10 +42,8 @@ class AdminController {
                     $username = 'doctor' . time();
                 }
 
-                global $pdo;
-                $chk = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
-                $chk->execute([$username]);
-                if ($chk->fetchColumn() > 0) {
+                $usernameCount = User::count('username', $username);
+                if ($usernameCount > 0) {
                     $username .= rand(10, 99);
                 }
 
@@ -61,10 +60,8 @@ class AdminController {
                     'color' => $_POST['color'] ?? '#3b82f6'
                 ];
 
-                // Validate uniqueness of email in users table
-                $chkEmail = $pdo->prepare("SELECT COUNT(*) FROM users WHERE email = ?");
-                $chkEmail->execute([$data['email']]);
-                if ($chkEmail->fetchColumn() > 0) {
+                // Validate uniqueness of email in users table via ORM
+                if (User::count('email', $data['email']) > 0) {
                     header("Location: doctors.php?error=" . urlencode("Email is already registered."));
                     exit;
                 }
@@ -161,41 +158,49 @@ class AdminController {
                 exit;
             }
 
-            $patientStmt = $pdo->prepare('SELECT COUNT(*) FROM patients WHERE patient_id = ?');
-            $patientStmt->execute([$patientId]);
-            $doctorStmt = $pdo->prepare('SELECT COUNT(*) FROM doctors WHERE doctor_id = ?');
-            $doctorStmt->execute([$doctorId]);
-            if (!$patientStmt->fetchColumn() || !$doctorStmt->fetchColumn()) {
+            // Existence checks via ORM
+            if (!Patient::count('patient_id', $patientId) || !Doctor::count('doctor_id', $doctorId)) {
                 header('Location: appointments.php?error=' . urlencode('The selected patient or doctor no longer exists.'));
                 exit;
             }
 
+            require_once __DIR__ . '/../Models/DoctorLeave.php';
+            if (DoctorLeave::isDoctorOnLeave($doctorId, $date)) {
+                header('Location: appointments.php?error=' . urlencode('The selected doctor is on approved leave on this date.'));
+                exit;
+            }
+
             $excludeId = $action === 'update_appointment' ? $appointmentId : '';
-            $conflictStmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status NOT IN ('Cancelled', 'Expired') AND appointment_id <> ?");
-            $conflictStmt->execute([$doctorId, $date, $time . ':00', $excludeId]);
-            $patientConflictStmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE patient_id = ? AND appointment_date = ? AND appointment_time = ? AND status NOT IN ('Cancelled', 'Expired') AND appointment_id <> ?");
-            $patientConflictStmt->execute([$patientId, $date, $time . ':00', $excludeId]);
-            if ($conflictStmt->fetchColumn() || $patientConflictStmt->fetchColumn()) {
+            if (Appointment::doctorHasConflict($doctorId, $date, $time . ':00', $excludeId)
+                || Appointment::patientHasConflict($patientId, $date, $time . ':00', $excludeId)) {
                 header('Location: appointments.php?error=' . urlencode('The doctor or patient already has an appointment at that time.'));
                 exit;
             }
 
             try {
                 if ($action === 'create_appointment') {
-                    $idStmt = $pdo->query("SELECT MAX(CAST(SUBSTRING(appointment_id, 2) AS UNSIGNED)) FROM appointments WHERE appointment_id REGEXP '^A[0-9]+$'");
-                    $nextId = ((int) $idStmt->fetchColumn()) + 1;
-                    $appointmentId = 'A' . str_pad((string) $nextId, 3, '0', STR_PAD_LEFT);
-                    $stmt = $pdo->prepare('INSERT INTO appointments (appointment_id, patient_id, doctor_id, appointment_date, appointment_time, reason, status) VALUES (?, ?, ?, ?, ?, ?, \'Scheduled\')');
-                    $stmt->execute([$appointmentId, $patientId, $doctorId, $date, $time . ':00', $reason]);
+                    $appointmentId = Appointment::generateNextId();
+                    $newAppointment = new Appointment([
+                        'appointment_id'   => $appointmentId,
+                        'patient_id'       => $patientId,
+                        'doctor_id'        => $doctorId,
+                        'appointment_date' => $date,
+                        'appointment_time' => $time . ':00',
+                        'reason'           => $reason,
+                        'status'           => 'Scheduled',
+                    ], false);
+                    $newAppointment->save(); // ORM insert
                     $message = 'Appointment scheduled successfully.';
                 } elseif ($action === 'update_appointment' && $appointmentId !== '') {
-                    $existsStmt = $pdo->prepare('SELECT COUNT(*) FROM appointments WHERE appointment_id = ?');
-                    $existsStmt->execute([$appointmentId]);
-                    if (!$existsStmt->fetchColumn()) {
+                    $existingAppointment = Appointment::find($appointmentId);
+                    if (!$existingAppointment) {
                         throw new RuntimeException('The appointment no longer exists.');
                     }
-                    $stmt = $pdo->prepare('UPDATE appointments SET appointment_date = ?, appointment_time = ?, reason = ?, status = ? WHERE appointment_id = ?');
-                    $stmt->execute([$date, $time . ':00', $reason, $status, $appointmentId]);
+                    $existingAppointment->appointment_date = $date;
+                    $existingAppointment->appointment_time = $time . ':00';
+                    $existingAppointment->reason = $reason;
+                    $existingAppointment->status = $status;
+                    $existingAppointment->save(); // ORM update
                     $message = 'Appointment updated successfully.';
                 } else {
                     throw new RuntimeException('Unsupported appointment action.');
@@ -274,61 +279,25 @@ class AdminController {
 
     public function reports() {
         $this->checkAdminAuth();
-        global $pdo;
+        require_once __DIR__ . '/../Models/Pharmacist.php';
 
-        // Total Revenue (paid payments)
-        $stmt = $pdo->query("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE payment_status = 'Paid'");
-        $totalRevenue = $stmt->fetchColumn();
+        // Total Revenue (paid payments) — aggregate SUM, now inside Payment model
+        $totalRevenue = Payment::getTotalRevenue();
 
-        // Total Appointments
-        $stmt = $pdo->query("SELECT COUNT(*) FROM appointments");
-        $totalAppointments = $stmt->fetchColumn();
+        // Simple per-table / per-status counts via ORM
+        $totalAppointments = Appointment::count();
+        $activePatients = Patient::count();
+        $completedAppointments = Appointment::count('status', 'Completed');
+        $cancelledAppointments = Appointment::count('status', 'Cancelled');
+        $scheduledAppointments = Appointment::count('status', 'Scheduled');
+        $totalDoctors = Doctor::count();
+        $totalPharmacists = Pharmacist::count();
 
-        // Active Patients
-        $stmt = $pdo->query("SELECT COUNT(*) FROM patients");
-        $activePatients = $stmt->fetchColumn();
+        // Revenue by Department — JOIN + GROUP BY, now inside Payment model
+        $revenueByDept = Payment::getRevenueByDepartment(5);
 
-        // Completed appointments
-        $stmt = $pdo->query("SELECT COUNT(*) FROM appointments WHERE status = 'Completed'");
-        $completedAppointments = $stmt->fetchColumn();
-
-        // Cancelled appointments
-        $stmt = $pdo->query("SELECT COUNT(*) FROM appointments WHERE status = 'Cancelled'");
-        $cancelledAppointments = $stmt->fetchColumn();
-
-        // Pending (Scheduled) appointments
-        $stmt = $pdo->query("SELECT COUNT(*) FROM appointments WHERE status = 'Scheduled'");
-        $scheduledAppointments = $stmt->fetchColumn();
-
-        // Total Doctors
-        $stmt = $pdo->query("SELECT COUNT(*) FROM doctors");
-        $totalDoctors = $stmt->fetchColumn();
-
-        // Total Pharmacists
-        $stmt = $pdo->query("SELECT COUNT(*) FROM pharmacists");
-        $totalPharmacists = $stmt->fetchColumn();
-
-        // Revenue by Department
-        $stmt = $pdo->query("
-            SELECT d.specialization, COALESCE(SUM(p.amount), 0) as revenue
-            FROM doctors d
-            LEFT JOIN appointments a ON a.doctor_id = d.doctor_id
-            LEFT JOIN payments p ON p.appointment_id = a.appointment_id AND p.payment_status = 'Paid'
-            GROUP BY d.specialization
-            ORDER BY revenue DESC
-            LIMIT 5
-        ");
-        $revenueByDept = $stmt->fetchAll();
-
-        // Recent 6 months payments (for trend chart)
-        $stmt = $pdo->query("
-            SELECT DATE_FORMAT(payment_date, '%b') as month, COALESCE(SUM(amount), 0) as total
-            FROM payments
-            WHERE payment_status = 'Paid' AND payment_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-            GROUP BY DATE_FORMAT(payment_date, '%Y-%m')
-            ORDER BY DATE_FORMAT(payment_date, '%Y-%m') ASC
-        ");
-        $monthlyRevenue = $stmt->fetchAll();
+        // Recent 6 months payments (for trend chart) — aggregate, now inside Payment model
+        $monthlyRevenue = Payment::getMonthlyRevenueTrend(6);
 
         return [
             'totalRevenue'          => $totalRevenue,
@@ -365,7 +334,6 @@ class AdminController {
 
     public function leaveRequests() {
         $this->checkAdminAuth();
-        global $pdo;
 
         // Handle approve / reject actions via Facade delegation
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {

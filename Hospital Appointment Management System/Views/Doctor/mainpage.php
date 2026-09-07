@@ -1,6 +1,10 @@
 <?php
 require_once '../../db.php';
 require_once '../../Models/User.php';
+require_once '../../Models/Doctor.php';
+require_once '../../Models/Appointment.php';
+require_once '../../Models/DoctorLeave.php';
+require_once '../../Models/Prescription.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -13,76 +17,36 @@ if (!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'doctor') {
 
 $id = $_SESSION['user_id'];
 
-// 1. Fetch doctor details from database
-$doctor_stmt = $pdo->prepare('SELECT doctor_id, name FROM doctors WHERE user_id = ?');
-$doctor_stmt->execute([$id]);
-$doctor = $doctor_stmt->fetch();
-$doctor_id = $doctor ? $doctor['doctor_id'] : 'D001';
-$doctor_name = $doctor ? $doctor['name'] : $_SESSION['user']['username'];
+// 1. Fetch doctor details via ORM
+$doctorMatches = Doctor::where('user_id', $id);
+$doctor = $doctorMatches[0] ?? null;
+$doctor_id = $doctor ? $doctor->doctor_id : 'D001';
+$doctor_name = $doctor ? $doctor->name : $_SESSION['user']['username'];
 
 // Today's date
 $today = date('Y-m-d');
 $banner_date = date('l, F j');
 
 // 2. Today's total appointments count
-$stmt = $pdo->prepare('SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND appointment_date = ?');
-$stmt->execute([$doctor_id, $today]);
-$todays_appointments_count = $stmt->fetchColumn();
+$todays_appointments_count = Appointment::getCountForDoctorOnDate($doctor_id, $today);
 
 // 3. Today's remaining scheduled appointments
-$stmt = $pdo->prepare('SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND status = \'Scheduled\'');
-$stmt->execute([$doctor_id, $today]);
-$todays_remaining_count = $stmt->fetchColumn();
+$todays_remaining_count = Appointment::getCountForDoctorOnDate($doctor_id, $today, 'Scheduled');
 
 // 4. Today's completed appointments
-$stmt = $pdo->prepare('SELECT COUNT(*) FROM appointments WHERE doctor_id = ? AND appointment_date = ? AND status = \'Completed\'');
-$stmt->execute([$doctor_id, $today]);
-$todays_completed_count = $stmt->fetchColumn();
+$todays_completed_count = Appointment::getCountForDoctorOnDate($doctor_id, $today, 'Completed');
 
 // 5. Doctor leaves pending review
-$stmt = $pdo->prepare('SELECT COUNT(*) FROM doctor_leaves WHERE doctor_id = ? AND status = \'Pending\'');
-$stmt->execute([$doctor_id]);
-$pending_leaves_count = $stmt->fetchColumn();
+$pending_leaves_count = DoctorLeave::getPendingCountForDoctor($doctor_id);
 
 // 6. Total unique patients under care
-$stmt = $pdo->prepare('SELECT COUNT(DISTINCT patient_id) FROM appointments WHERE doctor_id = ?');
-$stmt->execute([$doctor_id]);
-$total_patients_count = $stmt->fetchColumn();
+$total_patients_count = Appointment::getDistinctPatientCountForDoctor($doctor_id);
 
 // 7. Today's appointments list with patient details
-$schedule_stmt = $pdo->prepare('
-    SELECT 
-        a.appointment_id, 
-        a.appointment_time, 
-        a.reason, 
-        a.status, 
-        p.patient_id, 
-        p.full_name 
-    FROM appointments a 
-    JOIN patients p ON a.patient_id = p.patient_id 
-    WHERE a.doctor_id = ? AND a.appointment_date = ? 
-    ORDER BY a.appointment_time ASC
-');
-$schedule_stmt->execute([$doctor_id, $today]);
-$todays_schedule = $schedule_stmt->fetchAll();
+$todays_schedule = Appointment::getScheduleForDoctorOnDate($doctor_id, $today);
+
 // 8. Fetch doctor's 3 most recent prescriptions from database
-$recent_pres_stmt = $pdo->prepare('
-    SELECT 
-        pr.dosage,
-        pr.frequency,
-        pr.created_at,
-        m.brand_name,
-        p.full_name as patient_name
-    FROM prescriptions pr
-    JOIN medical_records mr ON pr.record_id = mr.medical_record_id
-    JOIN patients p ON mr.patient_id = p.patient_id
-    JOIN medicines m ON pr.medicine_id = m.medicine_id
-    WHERE mr.doctor_id = ?
-    ORDER BY pr.created_at DESC, pr.prescription_id DESC
-    LIMIT 3
-');
-$recent_pres_stmt->execute([$doctor_id]);
-$recent_prescriptions = $recent_pres_stmt->fetchAll();
+$recent_prescriptions = Prescription::getRecentForDoctor($doctor_id, 3);
 
 $temp_has_active = false;
 $active_count = 0;
@@ -124,10 +88,10 @@ if ($api_response) {
     }
 }
 
-// Fallback to direct DB query if Web Service is offline or times out
+// Fallback to ORM Model if Web Service is offline or times out
 if (empty($medicines_list)) {
-    $med_stmt = $pdo->query('SELECT medicine_id, brand_name, generic_name FROM medicines ORDER BY brand_name');
-    $medicines_list = $med_stmt->fetchAll();
+    require_once __DIR__ . '/../../Models/Medicine.php';
+    $medicines_list = array_map(function($m) { return $m->toArray(); }, Medicine::all());
 }
 
 // Handle form submission to Complete Consultation
@@ -139,29 +103,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $follow_up_date = !empty($_POST['follow_up_date']) ? $_POST['follow_up_date'] : null;
     $follow_up_time = !empty($_POST['follow_up_time']) ? $_POST['follow_up_time'] : null;
     
-    // 1. Get the patient_id and doctor_id from the appointment
-    $appt_stmt = $pdo->prepare('SELECT patient_id, doctor_id FROM appointments WHERE appointment_id = ?');
-    $appt_stmt->execute([$appt_id]);
-    $appt_info = $appt_stmt->fetch();
+    // 1. Get the patient_id and doctor_id from the appointment via ORM
+    require_once '../../Models/Appointment.php';
+    $appt_info = Appointment::find($appt_id);
     
     if ($appt_info) {
-        $patient_id = $appt_info['patient_id'];
-        $doctor_id = $appt_info['doctor_id'];
+        $patient_id = $appt_info->patient_id;
+        $doctor_id = $appt_info->doctor_id;
         
-        // Generate a new medical record ID (e.g. MR002)
-        $count_stmt = $pdo->query('SELECT COUNT(*) FROM medical_records');
-        $mr_count = $count_stmt->fetchColumn() + 1;
-        $medical_record_id = 'MR' . str_pad($mr_count, 3, '0', STR_PAD_LEFT);
-        
-        // 2. Insert into medical_records
-        $ins_mr = $pdo->prepare('
-            INSERT INTO medical_records (medical_record_id, patient_id, doctor_id, appointment_id, diagnosis, symptoms, notes, follow_up_date) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ');
-        $ins_mr->execute([$medical_record_id, $patient_id, $doctor_id, $appt_id, $diagnosis, $symptoms, $notes, $follow_up_date]);
+        // 2. Create medical record via ORM (auto-generates medical_record_id)
+        require_once '../../Models/MedicalRecord.php';
+        $medical_record_id = MedicalRecord::createForConsultation(
+            $patient_id, $doctor_id, $appt_id, $diagnosis, $symptoms, $notes, $follow_up_date
+        )->medical_record_id;
         
         // 3. Update appointment status to 'Completed' using State Pattern
-        require_once '../../Models/Appointment.php';
         $appointment = Appointment::load($appt_id);
         if ($appointment) {
             $appointment->complete();
@@ -186,40 +142,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $instructions = isset($instructions_list[$i]) ? trim($instructions_list[$i]) : '';
                 $quantity = isset($quantities[$i]) ? (int)$quantities[$i] : 30;
                 
-                // Generate prescription ID (e.g. PR002)
-                $count_pr_stmt = $pdo->query('SELECT COUNT(*) FROM prescriptions');
-                $pr_count = $count_pr_stmt->fetchColumn() + 1;
-                $prescription_id = 'PR' . str_pad($pr_count, 3, '0', STR_PAD_LEFT);
+                // Generate prescription ID (e.g. PR002) and insert via ORM
+                require_once '../../Models/Prescription.php';
+                $pr_count = Prescription::count() + 1;
+                $prescription_id = 'PR' . str_pad((string) $pr_count, 3, '0', STR_PAD_LEFT);
                 
-                $ins_pr = $pdo->prepare('
-                    INSERT INTO prescriptions (prescription_id, record_id, medicine_id, dosage, frequency, duration, instructions, quantity) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ');
-                $ins_pr->execute([$prescription_id, $medical_record_id, $med_id, $dosage, $frequency, $duration, $instructions, $quantity]);
+                $prescription = new Prescription([
+                    'prescription_id' => $prescription_id,
+                    'record_id'       => $medical_record_id,
+                    'medicine_id'     => $med_id,
+                    'dosage'          => $dosage,
+                    'frequency'       => $frequency,
+                    'duration'        => $duration,
+                    'instructions'    => $instructions,
+                    'quantity'        => $quantity,
+                ], false);
+                $prescription->save();
             }
         }
         
         // 5. If follow up date is set, automatically make a new appointment for the patient!
         if ($follow_up_date) {
-            $appt_time = $follow_up_time;
-            if (!$appt_time) {
-                // Get original appointment time to reuse for follow-up
-                $orig_time_stmt = $pdo->prepare('SELECT appointment_time FROM appointments WHERE appointment_id = ?');
-                $orig_time_stmt->execute([$appt_id]);
-                $orig_time = $orig_time_stmt->fetchColumn();
-                $appt_time = $orig_time ? $orig_time : '10:00:00';
-            }
+            $appt_time = $follow_up_time ?: ($appt_info->appointment_time ?: '10:00:00');
             
-            // Generate appointment ID (e.g. A006)
-            $count_appt_stmt = $pdo->query('SELECT COUNT(*) FROM appointments');
-            $appt_count = $count_appt_stmt->fetchColumn() + 1;
-            $new_appt_id = 'A' . str_pad($appt_count, 3, '0', STR_PAD_LEFT);
+            // Generate appointment ID (e.g. A006) and insert via ORM
+            $appt_count = Appointment::count() + 1;
+            $new_appt_id = 'A' . str_pad((string) $appt_count, 3, '0', STR_PAD_LEFT);
             
-            $ins_appt = $pdo->prepare('
-                INSERT INTO appointments (appointment_id, patient_id, doctor_id, appointment_date, appointment_time, reason, status) 
-                VALUES (?, ?, ?, ?, ?, \'Follow-up\', \'Scheduled\')
-            ');
-            $ins_appt->execute([$new_appt_id, $patient_id, $doctor_id, $follow_up_date, $appt_time]);
+            $followUpAppt = new Appointment([
+                'appointment_id'   => $new_appt_id,
+                'patient_id'       => $patient_id,
+                'doctor_id'        => $doctor_id,
+                'appointment_date' => $follow_up_date,
+                'appointment_time' => $appt_time,
+                'reason'           => 'Follow-up',
+                'status'           => 'Scheduled',
+            ], false);
+            $followUpAppt->save();
         }
         
         // Success redirect

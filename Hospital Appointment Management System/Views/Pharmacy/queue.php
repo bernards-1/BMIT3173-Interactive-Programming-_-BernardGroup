@@ -11,12 +11,18 @@ require_once '../../Models/Pharmacy.php';
 $pharmacist     = Pharmacy::getPharmacistByUserId($_SESSION['user']['user_id']);
 $pharmacistName = $pharmacist ? $pharmacist['full_name'] : $_SESSION['user']['username'];
 
-// Consuming Doctor Module API via cURL RESTful Service (Section 6.3)
+// Consume Clinical Prescriptions Web Service via cURL RESTful API
+$req_id = 'REQ_PHARM_QUEUE_' . bin2hex(random_bytes(3));
+$req_ts = date('Y-m-d H:i:s');
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+$base_dir = '/Hospital Appointment Management System';
+$apiUrl = "{$protocol}://{$host}" . str_replace(' ', '%20', $base_dir) . "/api/get_prescriptions.php?status=pending&requestID=" . urlencode($req_id) . "&timeStamp=" . urlencode($req_ts);
+
 $ch = curl_init();
-$apiUrl = "http://localhost/Hospital%20Appointment%20Management%20System/api/get_prescriptions.php?status=pending&timeStamp=" . urlencode(date('Y-m-d H:i:s'));
 curl_setopt($ch, CURLOPT_URL, $apiUrl);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 1); // 1.0s timeout guard
+curl_setopt($ch, CURLOPT_TIMEOUT, 2); // 2.0s timeout guard
 $response = curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);

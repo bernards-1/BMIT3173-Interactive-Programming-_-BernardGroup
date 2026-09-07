@@ -1,5 +1,6 @@
 <?php
 require_once '../../db.php';
+require_once '../../Models/User.php';
 
 $title = 'Account Activation - MediCare';
 $message = '';
@@ -14,17 +15,15 @@ if (empty($email) || empty($token)) {
 } elseif ($token !== $expected_token) {
     $message = 'The activation link is invalid or has expired.';
 } else {
-    // Check if the user exists
-    $stmt = $pdo->prepare("SELECT user_id, is_active FROM users WHERE email = ? LIMIT 1");
-    $stmt->execute([$email]);
-    $user = $stmt->fetch();
+    // Check if the user exists via ORM
+    $user = User::findByEmail($email);
     
     if (!$user) {
         $message = 'Associated user account was not found.';
     } else {
-        // Activate user
-        $upd = $pdo->prepare("UPDATE users SET is_active = 1 WHERE email = ?");
-        $upd->execute([$email]);
+        // Activate user via ORM
+        $user->is_active = 1;
+        $user->save();
         
         $is_success = true;
         $message = 'Your account has been successfully verified and activated! You can now log in to access your patient portal.';

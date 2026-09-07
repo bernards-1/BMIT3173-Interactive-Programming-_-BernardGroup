@@ -11,15 +11,15 @@ $user_id = $_SESSION['user_id'] ?? ($_SESSION['user']['user_id'] ?? null);
 $pharmacist_name = $_SESSION['user']['username'] ?? 'Pharmacist';
 
 if (!isset($pdo)) {
-    @include_once __DIR__ . '/../../db.php';
+    @include_once __DIR__ . '/../../../db.php';
 }
 
 if (isset($pdo) && $user_id) {
-    $stmt_nav = $pdo->prepare("SELECT full_name FROM pharmacists WHERE user_id = ?");
-    $stmt_nav->execute([$user_id]);
-    $p_data = $stmt_nav->fetch();
-    if ($p_data && !empty($p_data['full_name'])) {
-        $pharmacist_name = $p_data['full_name'];
+    require_once __DIR__ . '/../../../Models/Pharmacist.php';
+    $pharmacistMatches = Pharmacist::where('user_id', $user_id);
+    $p_data = $pharmacistMatches[0] ?? null;
+    if ($p_data && !empty($p_data->full_name)) {
+        $pharmacist_name = $p_data->full_name;
     }
 }
 $avatar_letter = !empty($pharmacist_name) ? strtoupper(substr($pharmacist_name, 0, 1)) : 'P';
