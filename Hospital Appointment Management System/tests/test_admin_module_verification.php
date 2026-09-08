@@ -1,15 +1,4 @@
 <?php
-// tests/test_admin_module_verification.php
-/**
- * =========================================================================
- * BMIT3173 Integrative Programming - Comprehensive Verification Suite
- * Targets:
- *   1. Facade Pattern Client Execution & Subsystem Delegation Tests
- *   2. Session Security (session_regenerate_id, HttpOnly, SameSite, Inactivity Timeout, Logout)
- *   3. SQL Injection Negative Attack Test (Demonstrating failed exploit via Prepared Statements)
- *   4. Inter-Module Web Service Contract Testing (200, 400, 401, 504)
- * =========================================================================
- */
 
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../core/SecuritySession.php';

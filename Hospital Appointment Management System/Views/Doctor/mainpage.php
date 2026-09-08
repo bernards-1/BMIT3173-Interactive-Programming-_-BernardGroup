@@ -57,42 +57,11 @@ foreach ($todays_schedule as $appt) {
     }
 }
 
-// Fetch medicines list via Web Service Consumption
-$medicines_list = [];
-$host = $_SERVER['HTTP_HOST'];
-$script = $_SERVER['SCRIPT_NAME'];
-$base_dir = '/Hospital Appointment Management System';
-if (strpos($script, '/Hospital Appointment Management System') !== false) {
-    $base_dir = '/Hospital Appointment Management System';
-} else {
-    $parts = explode('/', trim($script, '/'));
-    if (!empty($parts)) {
-        $base_dir = '/' . $parts[0];
-    }
-}
-$req_id = 'REQ_DOC_MAIN_' . rand(1000, 9999);
-$req_ts = date('Y-m-d H:i:s');
-$api_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://" . $host . $base_dir . '/api/medicines.php?requestID=' . urlencode($req_id) . '&timestamp=' . urlencode($req_ts);
-
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, $api_url);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 1);
-$api_response = curl_exec($ch);
-curl_close($ch);
-
-if ($api_response) {
-    $api_data = json_decode($api_response, true);
-    if (isset($api_data['status']) && $api_data['status'] === 'S') {
-        $medicines_list = $api_data['data'];
-    }
-}
-
-// Fallback to ORM Model if Web Service is offline or times out
-if (empty($medicines_list)) {
-    require_once __DIR__ . '/../../Models/Medicine.php';
-    $medicines_list = array_map(function($m) { return $m->toArray(); }, Medicine::all());
-}
+// Fetch medicines list via Web Service Consumer
+require_once __DIR__ . '/../../services/MedicineConsumerService.php';
+$medicineService = new MedicineConsumerService();
+$medicines = $medicineService->getActiveMedicines();
+$medicines_list = $medicines;
 
 // Handle form submission to Complete Consultation
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'complete_consultation') {

@@ -4,6 +4,7 @@ require_once '../Models/User.php';
 require_once '../Models/Patient.php';
 require_once '../Models/Appointment.php';
 require_once '../Models/DoctorLeave.php';
+require_once '../Models/PatientRepository.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -51,6 +52,7 @@ if (!$appointment || $appointment->patient_id !== $patient_id) {
 }
 
 $doctor_id = $appointment->doctor_id;
+$patientRepository = new PatientRepository($pdo);
 
 // Action 1: Get booked time slots and leave status for a specific date
 if ($action === 'get_booked_slots') {
@@ -78,16 +80,18 @@ if ($action === 'get_booked_slots') {
 
 // Action 2: Cancel appointment
 if ($action === 'cancel') {
-    $apptObj = Appointment::load($appointment_id);
-    if (!$apptObj) {
-        echo json_encode(['success' => false, 'message' => 'Appointment not found.']);
+    if (in_array($appointment->status, ['Completed', 'Cancelled', 'Expired'], true)) {
+        echo json_encode(['success' => false, 'message' => $appointment->status . ' appointments cannot be cancelled.']);
         exit;
     }
-    try {
-        $apptObj->cancel();
+
+    $correlationId = 'CORR-' . bin2hex(random_bytes(4));
+    $cancelled = $patientRepository->cancelAppointment($appointment_id, $patient_id, $correlationId);
+
+    if ($cancelled) {
         echo json_encode(['success' => true, 'message' => 'Appointment cancelled successfully.']);
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    } else {
+        echo json_encode(['success' => false, 'message' => 'Appointment not found or permission denied.']);
     }
     exit;
 }
