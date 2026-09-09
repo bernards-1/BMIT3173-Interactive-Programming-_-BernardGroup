@@ -233,14 +233,39 @@ foreach ($doctors as $idx => $doc) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         /* Calendar interactive styles */
-        .calendar-day:not(.muted) {
+        .calendar-day:not(.muted):not(.past-date) {
             cursor: pointer;
             transition: all 0.2s ease;
         }
 
-        .calendar-day:not(.muted):hover {
+        .calendar-day:not(.muted):not(.past-date):hover {
             background-color: #f1f5f9;
             border-radius: 6px;
+        }
+
+        /* Past date styles */
+        .calendar-day.past-date {
+            color: #cbd5e1 !important;
+            background-color: #f8fafc !important;
+            cursor: not-allowed !important;
+            opacity: 0.45;
+            pointer-events: none;
+        }
+
+        /* Today highlight indicator */
+        .calendar-day.today:not(.selected) {
+            border: 2px solid var(--primary-blue, #3b82f6) !important;
+            font-weight: 700 !important;
+            color: var(--primary-blue, #3b82f6) !important;
+            border-radius: 6px;
+        }
+
+        /* Disabled calendar nav buttons */
+        .calendar-nav-btn:disabled,
+        .calendar-nav-btn.disabled {
+            opacity: 0.25 !important;
+            cursor: not-allowed !important;
+            pointer-events: none;
         }
 
         /* Selected date highlight */
@@ -584,14 +609,27 @@ foreach ($doctors as $idx => $doc) {
                 monthYearLabel.innerText = `${months[month]} ${year}`;
                 calendarGrid.innerHTML = "";
 
+                const today = new Date();
+                const todayYear = today.getFullYear();
+                const todayMonth = today.getMonth();
+                const todayDay = today.getDate();
+                const todayStr = `${todayYear}-${String(todayMonth + 1).padStart(2, '0')}-${String(todayDay).padStart(2, '0')}`;
+
+                // Disable previous month button if we are currently at or before the current month/year
+                if (prevMonthBtn) {
+                    const isAtOrBeforeCurrentMonth = (year < todayYear) || (year === todayYear && month <= todayMonth);
+                    prevMonthBtn.disabled = isAtOrBeforeCurrentMonth;
+                    prevMonthBtn.classList.toggle("disabled", isAtOrBeforeCurrentMonth);
+                }
+
                 const firstDayIndex = new Date(year, month, 1).getDay();
                 const totalDays = new Date(year, month + 1, 0).getDate();
                 const prevTotalDays = new Date(year, month, 0).getDate();
 
-                // Leading days from previous month
+                // Leading days from previous month (always past)
                 for (let i = firstDayIndex; i > 0; i--) {
                     const dayDiv = document.createElement("div");
-                    dayDiv.classList.add("calendar-day", "muted");
+                    dayDiv.classList.add("calendar-day", "muted", "past-date");
                     dayDiv.innerText = prevTotalDays - i + 1;
                     calendarGrid.appendChild(dayDiv);
                 }
@@ -607,33 +645,48 @@ foreach ($doctors as $idx => $doc) {
                     const matchStr = `${year}-${formattedMonthNum}-${formattedDayNum}`;
                     const displayStr = `${months[month]} ${day}, ${year}`;
 
-                    const leaveInfo = isDateOnLeave(matchStr);
-                    if (leaveInfo) {
-                        dayDiv.classList.add("on-leave");
-                        dayDiv.title = `Dr. ${bookingData.doctorName || 'Doctor'} is on approved leave (${leaveInfo.start_date} to ${leaveInfo.end_date})`;
+                    const isToday = matchStr === todayStr;
+                    const isPast = matchStr < todayStr;
+
+                    if (isToday) {
+                        dayDiv.classList.add("today");
+                        dayDiv.title = "Today";
                     }
 
-                    if (bookingData.date === matchStr) {
-                        dayDiv.classList.add("selected");
-                    }
-
-                    dayDiv.addEventListener("click", function () {
-                        const leave = isDateOnLeave(matchStr);
-                        if (leave) {
-                            document.getElementById('errorModalMsg').innerText = `Dr. ${bookingData.doctorName || 'The selected doctor'} is on approved leave from ${leave.start_date} to ${leave.end_date}. No appointments can be scheduled on this date.`;
-                            document.getElementById('bookingErrorModal').classList.add('active');
-                            return;
+                    if (isPast) {
+                        dayDiv.classList.add("past-date");
+                        dayDiv.title = "Past dates cannot be selected";
+                    } else {
+                        const leaveInfo = isDateOnLeave(matchStr);
+                        if (leaveInfo) {
+                            dayDiv.classList.add("on-leave");
+                            dayDiv.title = `Dr. ${bookingData.doctorName || 'Doctor'} is on approved leave (${leaveInfo.start_date} to ${leaveInfo.end_date})`;
                         }
 
-                        document.querySelectorAll("#calendarGrid .calendar-day").forEach(d => d.classList.remove("selected"));
-                        this.classList.add("selected");
+                        if (bookingData.date === matchStr) {
+                            dayDiv.classList.add("selected");
+                        }
 
-                        bookingData.date = matchStr;
-                        summaryDate.innerText = displayStr;
-                        updateDoctorCardsStatus(matchStr);
-                        updateTimeSlotAvailability();
-                        validateForm();
-                    });
+                        dayDiv.addEventListener("click", function () {
+                            if (isPast) return;
+
+                            const leave = isDateOnLeave(matchStr);
+                            if (leave) {
+                                document.getElementById('errorModalMsg').innerText = `Dr. ${bookingData.doctorName || 'The selected doctor'} is on approved leave from ${leave.start_date} to ${leave.end_date}. No appointments can be scheduled on this date.`;
+                                document.getElementById('bookingErrorModal').classList.add('active');
+                                return;
+                            }
+
+                            document.querySelectorAll("#calendarGrid .calendar-day").forEach(d => d.classList.remove("selected"));
+                            this.classList.add("selected");
+
+                            bookingData.date = matchStr;
+                            summaryDate.innerText = displayStr;
+                            updateDoctorCardsStatus(matchStr);
+                            updateTimeSlotAvailability();
+                            validateForm();
+                        });
+                    }
 
                     calendarGrid.appendChild(dayDiv);
                 }
@@ -651,6 +704,12 @@ foreach ($doctors as $idx => $doc) {
 
             // Month navigation controls
             prevMonthBtn.addEventListener("click", function () {
+                const today = new Date();
+                const todayYear = today.getFullYear();
+                const todayMonth = today.getMonth();
+                if (currentDate.getFullYear() < todayYear || (currentDate.getFullYear() === todayYear && currentDate.getMonth() <= todayMonth)) {
+                    return;
+                }
                 currentDate.setMonth(currentDate.getMonth() - 1);
                 renderCalendar();
             });
@@ -765,12 +824,13 @@ foreach ($doctors as $idx => $doc) {
 
                 const now = new Date();
                 const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                const isPastDate = Boolean(bookingData.date && bookingData.date < todayStr);
                 const isToday = bookingData.date === todayStr;
                 const nowHms = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
                 timeBtns.forEach(btn => {
                     const slotTime = btn.getAttribute("data-time");
-                    const isPast = isToday && slotTime <= nowHms;
+                    const isPast = isPastDate || (isToday && slotTime <= nowHms);
                     btn.classList.toggle("disabled", isPast);
                     if (isPast && btn.classList.contains("selected")) {
                         btn.classList.remove("selected");
@@ -817,8 +877,12 @@ foreach ($doctors as $idx => $doc) {
 
             // 6. Form validation
             function validateForm() {
+                const now = new Date();
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                 const onLeave = isDateOnLeave(bookingData.date);
-                if (!onLeave && bookingData.doctorId && bookingData.date && bookingData.time && bookingData.type && bookingData.reason.length > 0) {
+                const isPastDate = Boolean(bookingData.date && bookingData.date < todayStr);
+
+                if (!onLeave && !isPastDate && bookingData.doctorId && bookingData.date && bookingData.time && bookingData.type && bookingData.reason.length > 0) {
                     btnConfirm.classList.remove("disabled");
                 } else {
                     btnConfirm.classList.add("disabled");
@@ -828,6 +892,14 @@ foreach ($doctors as $idx => $doc) {
             // 7. Submit booking request
             btnConfirm.addEventListener("click", function () {
                 if (this.classList.contains("disabled")) return;
+
+                const now = new Date();
+                const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                if (bookingData.date && bookingData.date < todayStr) {
+                    document.getElementById('errorModalMsg').innerText = "Appointment date cannot be in the past.";
+                    document.getElementById('bookingErrorModal').classList.add('active');
+                    return;
+                }
 
                 btnConfirm.classList.add("disabled");
 

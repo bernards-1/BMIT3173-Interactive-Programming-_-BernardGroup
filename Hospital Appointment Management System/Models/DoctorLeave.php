@@ -90,6 +90,21 @@ class DoctorLeave extends Model {
     }
 
     /**
+     * All approved leaves for a doctor (used to highlight leave days on doctor schedule calendar).
+     */
+    public static function approvedLeavesForDoctor(string $doctorId): array {
+        $db = static::getDb();
+        $stmt = $db->prepare("
+            SELECT leave_id, start_date, end_date, reason 
+            FROM doctor_leaves 
+            WHERE doctor_id = ? AND status = 'Approved' 
+            ORDER BY start_date ASC
+        ");
+        $stmt->execute([$doctorId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
      * All leave requests with the requesting doctor's name (Admin view) —
      * cross-table, kept raw.
      */

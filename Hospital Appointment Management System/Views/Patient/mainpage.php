@@ -51,6 +51,15 @@ if ($patient_id) {
     $upcoming_count = count($upcoming_appointments);
 
     $total_visits = $patientRepository->countCompletedAppointments($patient_id);
+
+    // Fetch upcoming cancelled appointments (e.g. cancelled due to doctor leave)
+    require_once '../../Models/DoctorLeave.php';
+    $upcoming_cancelled = $patientRepository->getUpcomingCancelledAppointments($patient_id);
+    $cancelled_alerts = [];
+    foreach ($upcoming_cancelled as $c_apt) {
+        $c_apt['is_doctor_leave'] = DoctorLeave::isDoctorOnLeave($c_apt['doctor_id'], $c_apt['appointment_date']);
+        $cancelled_alerts[] = $c_apt;
+    }
 }
 
 // Fetch recent medical records (up to 3)
@@ -149,6 +158,35 @@ if ($upcoming_count > 0) {
             </div>
         </a>
     </div>
+
+    <!-- Cancellation / Doctor Leave Alert Banners -->
+    <?php if (!empty($cancelled_alerts)): ?>
+        <div style="margin-bottom: 24px;">
+            <?php foreach ($cancelled_alerts as $alert): 
+                $alert_date = date("M j, Y", strtotime($alert['appointment_date']));
+                $alert_time = date("g:i A", strtotime($alert['appointment_time']));
+            ?>
+            <div style="background: #fef2f2; border: 1px solid #fee2e2; border-left: 5px solid #ef4444; border-radius: 12px; padding: 16px 20px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    <div style="width: 42px; height: 42px; border-radius: 50%; background: #fee2e2; color: #ef4444; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 20px;">
+                        <i class="fa-solid fa-calendar-xmark"></i>
+                    </div>
+                    <div>
+                        <div style="font-size: 14.5px; font-weight: 700; color: #991b1b;">
+                            <?= $alert['is_doctor_leave'] ? 'Appointment Cancelled (Doctor on Leave)' : 'Appointment Cancelled' ?>
+                        </div>
+                        <div style="font-size: 13px; color: #7f1d1d; margin-top: 3px;">
+                            Your appointment with <strong><?= e($alert['doctor_name']) ?></strong> on <strong><?= e($alert_date) ?> at <?= e($alert_time) ?></strong> was cancelled. You can reschedule to another available date.
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn reschedule" onclick="openRescheduleModal('<?= e($alert['appointment_id']) ?>', '<?= e(addslashes($alert['doctor_name'])) ?>', '<?= e($alert['appointment_date']) ?>', '<?= e($alert['appointment_time']) ?>', '<?= e($alert_date) ?>', '<?= e($alert_time) ?>')" style="padding: 9px 18px; background: #ef4444; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background 0.2s;">
+                    <i class="fa-solid fa-rotate"></i> Reschedule Now
+                </button>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
 
      <!-- Split Layout Grid -->
     <div class="dashboard-grid" style="grid-template-columns: 2.2fr 1.1fr;">

@@ -170,6 +170,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $custom_reason = isset($_POST['leave_reason']) ? trim($_POST['leave_reason']) : '';
     $reason = "[{$leave_type}] {$custom_reason}";
     
+    // Server-side validation: start date cannot be in the past, end date cannot precede start date
+    $today = date('Y-m-d');
+    if ($start_date < $today || $end_date < $start_date) {
+        header('Location: schedule.php?leave_error=1');
+        exit;
+    }
+
     // Create leave request via ORM (auto-generates leave_id, saves as Pending)
     require_once '../../Models/DoctorLeave.php';
     DoctorLeave::request($doctor_id, $start_date, $end_date, $reason);
@@ -179,9 +186,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
-// Fetch leave history list for the modal via ORM
+// Fetch leave history list for the modal and approved leaves for schedule calendar via ORM
 require_once '../../Models/DoctorLeave.php';
 $leave_history = DoctorLeave::historyForDoctor($doctor_id);
+$doctor_approved_leaves = DoctorLeave::approvedLeavesForDoctor($doctor_id);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -255,6 +263,58 @@ $leave_history = DoctorLeave::historyForDoctor($doctor_id);
         justify-content: flex-start;
         padding-top: 14px;
         height: 76px;
+    }
+
+    /* Approved Leave Calendar Cell Styles */
+    .calendar-cell.leave-cell {
+        background-color: #fef2f2 !important;
+        border: 1px solid #fca5a5 !important;
+        color: #dc2626 !important;
+    }
+    .calendar-cell.leave-cell:hover {
+        background-color: #fee2e2 !important;
+        border-color: #f87171 !important;
+    }
+    .calendar-cell.leave-cell .day-number-text {
+        color: #dc2626 !important;
+        font-weight: 700;
+    }
+    .calendar-cell.today-cell.leave-cell:not(.active-cell) {
+        background-color: #fef2f2 !important;
+        border: 2px solid #ef4444 !important;
+        color: #dc2626 !important;
+    }
+    .calendar-cell.leave-cell.active-cell {
+        background-color: #ef4444 !important;
+        border-color: #dc2626 !important;
+        color: #ffffff !important;
+        box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.35);
+    }
+    .calendar-cell.leave-cell.active-cell .day-number-text {
+        color: #ffffff !important;
+    }
+    .leave-cell-badge {
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1.1;
+        background-color: #fee2e2;
+        color: #b91c1c;
+        padding: 2px 5px;
+        border-radius: 4px;
+        margin-top: 3px;
+        display: inline-block;
+        pointer-events: none;
+        white-space: nowrap;
+    }
+    .calendar-cell.leave-cell.active-cell .leave-cell-badge {
+        background-color: rgba(255, 255, 255, 0.25) !important;
+        color: #ffffff !important;
+    }
+    .calendar-cell.leave-cell .calendar-dot {
+        background-color: #ef4444 !important;
+    }
+    .calendar-cell.leave-cell.active-cell .calendar-dot {
+        background-color: #ffffff !important;
     }
     
     /* Timeline time badges */
@@ -410,8 +470,14 @@ $leave_history = DoctorLeave::historyForDoctor($doctor_id);
         <div>
             <!-- Calendar Card -->
             <div class="calendar-card">
-                <div class="calendar-header">
-                    <h3 style="font-size: 16px; font-weight: 700; color: var(--slate-900);" id="calendarMonthHeader">June 2026</h3>
+                <div class="calendar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                        <h3 style="font-size: 16px; font-weight: 700; color: var(--slate-900); margin: 0;" id="calendarMonthHeader">June 2026</h3>
+                        <div style="display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 600; color: var(--slate-500);">
+                            <span style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 7px; height: 7px; border-radius: 50%; background-color: #2563eb;"></span> Appointment</span>
+                            <span style="display: inline-flex; align-items: center; gap: 4px;"><span style="width: 7px; height: 7px; border-radius: 50%; background-color: #ef4444;"></span> On Leave</span>
+                        </div>
+                    </div>
                     <div style="display: flex; gap: 14px; font-size: 14px; color: var(--slate-600); cursor: pointer;">
                         <i class="fa-solid fa-chevron-left" onclick="prevMonth()"></i>
                         <i class="fa-solid fa-chevron-right" onclick="nextMonth()"></i>
@@ -520,6 +586,18 @@ const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "F
 
 // Database-driven appointments count and list grouped by YYYY-M-D key
 const mockAppointments = <?= json_encode($js_appointments) ?>;
+// Approved leaves list passed from backend
+const doctorApprovedLeaves = <?= json_encode($doctor_approved_leaves) ?>;
+
+function getApprovedLeaveForDate(year, month, day) {
+    const mStr = String(month + 1).padStart(2, '0');
+    const dStr = String(day).padStart(2, '0');
+    const dateStr = `${year}-${mStr}-${dStr}`;
+    
+    return doctorApprovedLeaves.find(leave => {
+        return dateStr >= leave.start_date && dateStr <= leave.end_date;
+    }) || null;
+}
 
 // Render the calendar on page load
 document.addEventListener("DOMContentLoaded", () => {
@@ -561,6 +639,18 @@ function renderCalendar(year, month) {
         dayNumberSpan.className = "day-number-text";
         dayNumberSpan.innerText = day;
         cell.appendChild(dayNumberSpan);
+        
+        // Check if this date has approved leave
+        const leave = getApprovedLeaveForDate(year, month, day);
+        if (leave) {
+            cell.classList.add("leave-cell");
+            cell.title = `On Leave: ${leave.reason || 'Approved Leave'}`;
+            
+            const leaveBadge = document.createElement("span");
+            leaveBadge.className = "leave-cell-badge";
+            leaveBadge.innerText = "On Leave";
+            cell.appendChild(leaveBadge);
+        }
         
         // Check if it is "Today"
         const isToday = (year === today.getFullYear() && month === today.getMonth() && day === today.getDate());
@@ -609,6 +699,8 @@ function prevMonth() {
         displayedYear--;
     }
     renderCalendar(displayedYear, displayedMonth);
+    const dayToSelect = (displayedYear === today.getFullYear() && displayedMonth === today.getMonth()) ? today.getDate() : 1;
+    selectDate(dayToSelect, displayedMonth, displayedYear);
 }
 
 function nextMonth() {
@@ -618,6 +710,8 @@ function nextMonth() {
         displayedYear++;
     }
     renderCalendar(displayedYear, displayedMonth);
+    const dayToSelect = (displayedYear === today.getFullYear() && displayedMonth === today.getMonth()) ? today.getDate() : 1;
+    selectDate(dayToSelect, displayedMonth, displayedYear);
 }
 
 function selectDate(day, month, year) {
@@ -633,19 +727,67 @@ function selectDate(day, month, year) {
     timelineHeader.innerText = `${dayOfWeek}, ${monthName} ${day}`;
     
     const dateKey = `${year}-${month}-${day}`;
+    const leave = getApprovedLeaveForDate(year, month, day);
+    
+    let leaveBannerHtml = "";
+    if (leave) {
+        const leaveReasonEscaped = (leave.reason || 'Approved Leave').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        leaveBannerHtml = `
+            <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+                <div style="background-color: #fee2e2; color: #dc2626; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;">
+                    <i class="fa-solid fa-plane-departure"></i>
+                </div>
+                <div style="flex: 1;">
+                    <div style="font-weight: 700; color: #991b1b; font-size: 13px;">On Approved Leave</div>
+                    <div style="color: #b91c1c; font-size: 12px; margin-top: 2px;">
+                        ${leaveReasonEscaped} &bull; (${leave.start_date} to ${leave.end_date})
+                    </div>
+                </div>
+                <span class="badge" style="background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 6px;">Approved</span>
+            </div>
+        `;
+    }
+
+    if (leave) {
+        const apptCount = mockAppointments[dateKey] ? mockAppointments[dateKey].list.length : 0;
+        if (apptCount > 0) {
+            timelineCount.innerHTML = `<span style="color: #dc2626; font-weight: 600;"><i class="fa-solid fa-plane-departure"></i> On Approved Leave</span> &bull; ${apptCount} appointments`;
+        } else {
+            timelineCount.innerHTML = `<span style="color: #dc2626; font-weight: 600;"><i class="fa-solid fa-plane-departure"></i> On Approved Leave</span>`;
+        }
+    } else {
+        if (mockAppointments[dateKey]) {
+            timelineCount.innerText = `${mockAppointments[dateKey].list.length} appointments`;
+        } else {
+            timelineCount.innerText = "0 appointments";
+        }
+    }
     
     if (mockAppointments[dateKey]) {
         const appts = mockAppointments[dateKey].list;
-        timelineCount.innerText = `${appts.length} appointments`;
         
         let html = "";
         appts.forEach(appt => {
             const isCompleted = appt.status === 'Completed';
+            const isCancelled = appt.status === 'Cancelled';
+            const isExpired = appt.status === 'Expired';
             
             let actionHtml = '';
             if (isCompleted) {
                 actionHtml = `
                     <span class="badge success" style="background-color: #d1fae5; color: #065f46; border-radius: 6px; text-transform: none; font-weight: 600; font-size: 11px; padding: 5px 10px; display: inline-block;">Completed</span>
+                `;
+            } else if (isCancelled) {
+                actionHtml = `
+                    <span class="badge" style="background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; border-radius: 6px; text-transform: none; font-weight: 600; font-size: 11px; padding: 5px 10px; display: inline-block;">Cancelled</span>
+                `;
+            } else if (isExpired) {
+                actionHtml = `
+                    <span class="badge" style="background-color: #f1f5f9; color: #64748b; border-radius: 6px; text-transform: none; font-weight: 600; font-size: 11px; padding: 5px 10px; display: inline-block;">Expired</span>
+                `;
+            } else if (leave) {
+                actionHtml = `
+                    <span class="badge" style="background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 6px; text-transform: none; font-weight: 600; font-size: 11px; padding: 5px 10px; display: inline-block;">On Leave</span>
                 `;
             } else {
                 const apptHour = parseInt(appt.time.split(':')[0]);
@@ -671,7 +813,8 @@ function selectDate(day, month, year) {
                 </a>
             `;
             
-            if (!isCompleted) {
+            // Only show "+ Add" button when appointment is active and doctor is NOT on leave
+            if (!isCompleted && !isCancelled && !isExpired && !leave) {
                 // Generate initials & color for modal
                 const names = appt.patient.split(' ');
                 let initials = '';
@@ -719,24 +862,33 @@ function selectDate(day, month, year) {
                 </div>
             `;
         });
-        container.innerHTML = html;
+        container.innerHTML = leaveBannerHtml + html;
     } else {
-        timelineCount.innerText = "0 appointments";
-        container.innerHTML = `
-            <div style="text-align:center; padding: 40px 20px; color: var(--slate-400); font-size:14px;">
-                <i class="fa-regular fa-calendar-xmark" style="font-size:28px; margin-bottom:12px; display:block; color: var(--slate-300);"></i>
-                No appointments scheduled for this day.
-            </div>
-        `;
+        if (leave) {
+            container.innerHTML = leaveBannerHtml + `
+                <div style="text-align:center; padding: 26px 20px; color: var(--slate-400); font-size:13px;">
+                    <i class="fa-solid fa-mug-hot" style="font-size:26px; margin-bottom:10px; display:block; color: #fca5a5;"></i>
+                    You are off-duty on this day.
+                </div>
+            `;
+        } else {
+            container.innerHTML = `
+                <div style="text-align:center; padding: 40px 20px; color: var(--slate-400); font-size:14px;">
+                    <i class="fa-regular fa-calendar-xmark" style="font-size:28px; margin-bottom:12px; display:block; color: var(--slate-300);"></i>
+                    No appointments scheduled for this day.
+                </div>
+            `;
+        }
     }
     
     // Find cell containing the clicked day
-    const allCells = document.querySelectorAll(".calendar-cell");
+    const allCells = document.querySelectorAll(".calendar-cell:not(.empty-cell)");
     allCells.forEach(cell => {
         const textSpan = cell.querySelector('.day-number-text');
         if (textSpan && parseInt(textSpan.textContent) === day) {
-            allCells.forEach(c => c.classList.remove("active-cell"));
             cell.classList.add("active-cell");
+        } else {
+            cell.classList.remove("active-cell");
         }
     });
 }
@@ -1008,6 +1160,13 @@ function handleFollowUpToggle(chk) {
 // Request Leave Modal Functions
 function openLeaveModal() {
     try {
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const startInput = document.getElementById("leaveStartDate");
+        const endInput = document.getElementById("leaveEndDate");
+        if (startInput) startInput.min = todayStr;
+        if (endInput) endInput.min = (startInput && startInput.value) ? startInput.value : todayStr;
+
         document.getElementById("leaveModalOverlay").style.display = "flex";
         document.body.style.overflow = "hidden"; // Prevent body scroll
         validateForm();
@@ -1016,11 +1175,31 @@ function openLeaveModal() {
     }
 }
 
+function handleLeaveStartDateChange() {
+    const startInput = document.getElementById("leaveStartDate");
+    const endInput = document.getElementById("leaveEndDate");
+    if (startInput && startInput.value) {
+        if (endInput) {
+            endInput.min = startInput.value;
+            if (endInput.value && endInput.value < startInput.value) {
+                endInput.value = startInput.value;
+            }
+        }
+    }
+    validateForm();
+}
+
 function closeLeaveModal() {
     try {
         document.getElementById("leaveModalOverlay").style.display = "none";
         document.body.style.overflow = ""; // Re-enable body scroll
         document.getElementById("leaveRequestForm").reset();
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const startInput = document.getElementById("leaveStartDate");
+        const endInput = document.getElementById("leaveEndDate");
+        if (startInput) startInput.min = todayStr;
+        if (endInput) endInput.min = todayStr;
     } catch(err) {
         alert("closeLeaveModal Error: " + err.message);
     }
@@ -1032,10 +1211,14 @@ function validateForm() {
         const start = document.getElementById("leaveStartDate").value;
         const end = document.getElementById("leaveEndDate").value;
         const reason = document.getElementById("leaveReason").value.trim();
-        
         const submitBtn = document.getElementById("submitLeaveBtn");
+
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
         
-        if (type && start && end && reason) {
+        const isDateValid = Boolean(start && end && start >= todayStr && end >= start);
+        
+        if (type && isDateValid && reason) {
             submitBtn.disabled = false;
         } else {
             submitBtn.disabled = true;
@@ -1165,11 +1348,11 @@ function closeLeaveHistoryModal() {
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
                 <div class="form-group">
                     <label class="form-label">Start Date <span style="color:red;">*</span></label>
-                    <input type="date" class="form-date-input" name="leave_start_date" id="leaveStartDate" required onchange="validateForm()">
+                    <input type="date" class="form-date-input" name="leave_start_date" id="leaveStartDate" min="<?= date('Y-m-d') ?>" required onchange="handleLeaveStartDateChange()">
                 </div>
                 <div class="form-group">
                     <label class="form-label">End Date <span style="color:red;">*</span></label>
-                    <input type="date" class="form-date-input" name="leave_end_date" id="leaveEndDate" required onchange="validateForm()">
+                    <input type="date" class="form-date-input" name="leave_end_date" id="leaveEndDate" min="<?= date('Y-m-d') ?>" required onchange="validateForm()">
                 </div>
             </div>
             
@@ -1384,9 +1567,50 @@ function closeLeaveHistoryModal() {
     </div>
 </div>
 
+<!-- Leave Request Feedback Modal (Custom in-page popup replacing browser alert) -->
+<div id="leaveFeedbackModal" class="modal-overlay">
+    <div class="modal-card" style="background: white; border-radius: 16px; width: 420px; max-width: 90%; text-align: center; padding: 32px 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); animation: modalFadeIn 0.3s ease-out; border: none;">
+        <div id="leaveFeedbackIconWrap" style="width: 64px; height: 64px; background: #ecfdf5; color: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 32px;">
+            <i id="leaveFeedbackIcon" class="fa-solid fa-circle-check"></i>
+        </div>
+        <h2 id="leaveFeedbackTitle" style="font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 8px;">Leave Request Submitted!</h2>
+        <p id="leaveFeedbackMsg" style="font-size: 14px; color: #64748b; margin-bottom: 24px; line-height: 1.5;">Your leave application has been submitted successfully and is pending administrator approval.</p>
+        
+        <button type="button" onclick="closeLeaveFeedbackModal()" style="width: 100%; background: #2563eb; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; transition: background 0.2s;">
+            OK
+        </button>
+    </div>
+</div>
+
 <script>
 function closeSuccessModal() {
     document.getElementById('consultationSuccessModal').classList.remove('active');
+}
+
+function openLeaveFeedbackModal(isSuccess, title, message) {
+    const modal = document.getElementById('leaveFeedbackModal');
+    const iconWrap = document.getElementById('leaveFeedbackIconWrap');
+    const icon = document.getElementById('leaveFeedbackIcon');
+    const titleEl = document.getElementById('leaveFeedbackTitle');
+    const msgEl = document.getElementById('leaveFeedbackMsg');
+
+    if (isSuccess) {
+        iconWrap.style.background = '#ecfdf5';
+        iconWrap.style.color = '#10b981';
+        icon.className = 'fa-solid fa-circle-check';
+    } else {
+        iconWrap.style.background = '#fef2f2';
+        iconWrap.style.color = '#ef4444';
+        icon.className = 'fa-solid fa-circle-xmark';
+    }
+    titleEl.innerText = title;
+    msgEl.innerText = message;
+    modal.classList.add('active');
+}
+
+function closeLeaveFeedbackModal() {
+    const modal = document.getElementById('leaveFeedbackModal');
+    if (modal) modal.classList.remove('active');
 }
 </script>
 
@@ -1476,8 +1700,18 @@ function closeSuccessModal() {
 
 <?php if (isset($_GET['leave_success'])): ?>
     <script>
-        alert("Leave request submitted successfully! Status is Pending approval from admin.");
-        window.history.replaceState({}, document.title, window.location.pathname);
+        document.addEventListener("DOMContentLoaded", () => {
+            openLeaveFeedbackModal(true, "Leave Request Submitted!", "Your leave application has been submitted successfully. Status is Pending approval from admin.");
+            window.history.replaceState({}, document.title, window.location.pathname);
+        });
+    </script>
+<?php endif; ?>
+<?php if (isset($_GET['leave_error'])): ?>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            openLeaveFeedbackModal(false, "Invalid Leave Dates", "Start date cannot be in the past and End date must be on or after Start date.");
+            window.history.replaceState({}, document.title, window.location.pathname);
+        });
     </script>
 <?php endif; ?>
 

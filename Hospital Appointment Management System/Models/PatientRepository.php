@@ -190,6 +190,19 @@ class PatientRepository
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function getUpcomingCancelledAppointments(string $patientId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT a.*, d.name AS doctor_name, d.specialization, d.initials, d.color
+            FROM appointments a
+            JOIN doctors d ON a.doctor_id = d.doctor_id
+            WHERE a.patient_id = ? AND a.status = 'Cancelled' AND a.appointment_date >= CURDATE()
+            ORDER BY a.appointment_date ASC, a.appointment_time ASC
+        ");
+        $stmt->execute([$patientId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     public function countCompletedAppointments(string $patientId): int
     {
         $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM appointments WHERE patient_id = ? AND status = 'Completed'");

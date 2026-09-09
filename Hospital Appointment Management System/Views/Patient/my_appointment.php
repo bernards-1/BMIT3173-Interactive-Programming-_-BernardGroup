@@ -57,9 +57,11 @@ function checkAndMarkExpired($pdo, $appointment_id, $appointment_date, $current_
     return $current_status;
 }
 
-// Check and update expired appointments
+// Check and update expired appointments, and flag if cancelled due to doctor leave
+require_once '../../Models/DoctorLeave.php';
 foreach ($appointments as $key => $apt) {
     $appointments[$key]['status'] = checkAndMarkExpired($pdo, $apt['appointment_id'], $apt['appointment_date'], $apt['status']);
+    $appointments[$key]['is_doctor_leave'] = ($appointments[$key]['status'] === 'Cancelled') && DoctorLeave::isDoctorOnLeave($apt['doctor_id'], $apt['appointment_date']);
 }
 
 // Sort appointments: Scheduled (Upcoming) first, then Completed, Expired, Cancelled
@@ -172,6 +174,11 @@ foreach ($appointments as $apt) {
                         <div class="apt-row-info">
                             <div class="apt-doctor-name"><?= e($apt['doctor_name']) ?></div>
                             <div class="apt-doctor-sub"><?= e($apt['specialization']) ?> · <?= e($apt['reason']) ?></div>
+                            <?php if (!empty($apt['is_doctor_leave'])): ?>
+                                <div style="font-size: 11.5px; color: #dc2626; margin-top: 4px; font-weight: 500;">
+                                    <i class="fa-solid fa-circle-exclamation"></i> Cancelled due to doctor leave. Please reschedule.
+                                </div>
+                            <?php endif; ?>
                             <div class="apt-meta">
                                 <span><i class="fa-regular fa-calendar"></i> <?= e($apt['appointment_date']) ?></span>
                                 <span><i class="fa-regular fa-clock"></i> <?= e($formatted_time) ?></span>
@@ -184,7 +191,7 @@ foreach ($appointments as $apt) {
                         <?php if ($apt['status'] === 'Scheduled'): ?>
                             <button type="button" class="apt-action-btn reschedule" onclick="openRescheduleModal('<?= e($apt['appointment_id']) ?>', '<?= e(addslashes($apt['doctor_name'])) ?>', '<?= e($apt['appointment_date']) ?>', '<?= e($apt['appointment_time']) ?>', '<?= e($date_display) ?>', '<?= e($formatted_time) ?>')"><i class="fa-solid fa-rotate"></i> Reschedule</button>
                             <button type="button" class="apt-action-btn cancel" onclick="openCancelModal('<?= e($apt['appointment_id']) ?>', '<?= e(addslashes($apt['doctor_name'])) ?>', '<?= e($date_display) ?>', '<?= e($formatted_time) ?>')"><i class="fa-solid fa-xmark"></i> Cancel</button>
-                        <?php elseif ($apt['status'] === 'Expired'): ?>
+                        <?php elseif ($apt['status'] === 'Expired' || $apt['status'] === 'Cancelled'): ?>
                             <button type="button" class="apt-action-btn reschedule" onclick="openRescheduleModal('<?= e($apt['appointment_id']) ?>', '<?= e(addslashes($apt['doctor_name'])) ?>', '<?= e($apt['appointment_date']) ?>', '<?= e($apt['appointment_time']) ?>', '<?= e($date_display) ?>', '<?= e($formatted_time) ?>')"><i class="fa-solid fa-rotate"></i> Reschedule</button>
                         <?php endif; ?>
                     </div>
