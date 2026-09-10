@@ -4,6 +4,11 @@ require_once '../../Controllers/LoginController.php';
 
 $controller = new LoginController();
 $error = $controller->handleLoginRequest();
+
+$success = $_GET['success'] ?? '';
+if (isset($_GET['msg']) && $_GET['msg'] === 'logged_out') {
+    $success = 'You have been successfully logged out.';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -88,6 +93,12 @@ $error = $controller->handleLoginRequest();
             <h2>Welcome back</h2>
             <p class="form-desc">Sign in to your account to continue</p>
             
+            <?php if (!empty($success)): ?>
+                <div class="alert alert-success" style="background-color: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; font-weight: 500;">
+                    <i class="fa-solid fa-circle-check" style="margin-right: 6px; color: #10b981;"></i> <?= htmlspecialchars($success) ?>
+                </div>
+            <?php endif; ?>
+
             <?php if (isset($error) && !empty($error)): ?>
                 <div class="alert alert-danger" style="background-color: #fee2e2; border: 1px solid #fecaca; color: #b91c1c; padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 20px; font-weight: 500;">
                     <i class="fa-solid fa-triangle-exclamation" style="margin-right: 6px;"></i> <?= e($error) ?>

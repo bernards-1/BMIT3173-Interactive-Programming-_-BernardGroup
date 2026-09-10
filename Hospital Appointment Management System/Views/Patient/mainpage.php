@@ -52,13 +52,16 @@ if ($patient_id) {
 
     $total_visits = $patientRepository->countCompletedAppointments($patient_id);
 
-    // Fetch upcoming cancelled appointments (e.g. cancelled due to doctor leave)
+    // Fetch upcoming cancelled appointments ONLY if cancelled due to doctor leave
     require_once '../../Models/DoctorLeave.php';
     $upcoming_cancelled = $patientRepository->getUpcomingCancelledAppointments($patient_id);
     $cancelled_alerts = [];
     foreach ($upcoming_cancelled as $c_apt) {
-        $c_apt['is_doctor_leave'] = DoctorLeave::isDoctorOnLeave($c_apt['doctor_id'], $c_apt['appointment_date']);
-        $cancelled_alerts[] = $c_apt;
+        $is_leave = DoctorLeave::isDoctorOnLeave($c_apt['doctor_id'], $c_apt['appointment_date']);
+        if ($is_leave) {
+            $c_apt['is_doctor_leave'] = true;
+            $cancelled_alerts[] = $c_apt;
+        }
     }
 }
 

@@ -166,6 +166,9 @@ class Pharmacy {
      */
     public static function getPendingQueue() {
         global $pdo;
+        if (!$pdo && class_exists('Database')) {
+            $pdo = Database::getInstance()->getConnection();
+        }
         $stmt = $pdo->prepare('
             SELECT
                 pr.prescription_id,

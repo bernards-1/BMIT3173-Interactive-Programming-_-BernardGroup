@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $new_patient_id = 'P' . str_pad($count_patient + 1, 3, '0', STR_PAD_LEFT);
                 }
                 
-                // 1. Insert into users table via ORM (is_active = 0)
+                // 1. Insert into users table via ORM (is_active = 1 for immediate access)
                 $hashed_password = password_hash($password, PASSWORD_DEFAULT);
                 $newUser = new User([
                     'user_id'   => $new_user_id,
@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'email'     => $email,
                     'password'  => $hashed_password,
                     'role'      => 'patient',
-                    'is_active' => 0,
+                    'is_active' => 1,
                 ], false);
                 $newUser->save();
                 
@@ -86,52 +86,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $pdo->commit();
                 
-                // Generate Activation Link
-                $token = md5($email . 'medicare_salt');
-                $host = $_SERVER['HTTP_HOST'];
-                $script = $_SERVER['SCRIPT_NAME'];
-                $base_dir = '/Hospital Appointment Management System';
-                if (strpos($script, '/Hospital Appointment Management System') !== false) {
-                    $base_dir = '/Hospital Appointment Management System';
-                } else {
-                    $parts = explode('/', trim($script, '/'));
-                    if (!empty($parts)) {
-                        $base_dir = '/' . $parts[0];
-                    }
-                }
-                $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http");
-                $activation_link = $protocol . "://" . $host . $base_dir . "/Views/Login/activate.php?email=" . urlencode($email) . "&token=" . $token;
-                
-                // Send verification email using PHP mail()
-                $subject = "Activate Your MediCare Account";
-                $headers = "MIME-Version: 1.0" . "\r\n";
-                $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-                $headers .= "From: no-reply@medicare.com" . "\r\n";
-
-                $body = "
-                <html>
-                <head>
-                    <title>Activate Your MediCare Account</title>
-                </head>
-                <body style='font-family: Arial, sans-serif; background-color: #f1f5f9; padding: 20px; color: #1e293b;'>
-                    <div style='max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; padding: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;'>
-                        <h2 style='color: #0052cc; margin-top: 0;'>Welcome to MediCare!</h2>
-                        <p>Dear {$full_name},</p>
-                        <p>Your account has been successfully created. Please click the link below to verify your email and activate your account:</p>
-                        <p style='margin: 30px 0;'>
-                            <a href='{$activation_link}' style='background-color: #0052cc; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;'>Activate Account Now</a>
-                        </p>
-                        <p>If the button doesn't work, you can copy and paste the following URL into your browser:</p>
-                        <p style='color: #64748b; font-size: 13px; word-break: break-all;'>{$activation_link}</p>
-                        <hr style='border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;'>
-                        <p style='font-size: 12px; color: #94a3b8;'>This is an automated email, please do not reply.</p>
-                    </div>
-                </body>
-                </html>
-                ";
-                @mail($email, $subject, $body, $headers);
-
-                $success = true;
+                // Redirect immediately to login with success message
+                header("Location: login.php?success=" . urlencode("Account created successfully! You can now sign in with your email and password."));
+                exit;
             } catch (Exception $e) {
                 $pdo->rollBack();
                 $error = 'Error during registration: ' . $e->getMessage();

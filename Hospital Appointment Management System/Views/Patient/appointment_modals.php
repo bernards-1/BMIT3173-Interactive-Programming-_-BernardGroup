@@ -225,20 +225,6 @@ function updateUIDAfterCancel(aptId) {
     // 2. Check if we are on my_appointment.php
     const aptRow = document.getElementById('apt-row-' + aptId);
     if (aptRow) {
-        aptRow.setAttribute('data-status', 'Cancelled');
-        
-        const badge = aptRow.querySelector('.apt-badge');
-        if (badge) {
-            badge.className = 'apt-badge cancelled';
-            badge.textContent = 'Cancelled';
-        }
-        
-        const actionsDiv = aptRow.querySelector('.apt-row-right');
-        if (actionsDiv) {
-            const buttons = actionsDiv.querySelectorAll('.apt-action-btn');
-            buttons.forEach(b => b.remove());
-        }
-
         const scheduledStat = document.getElementById('statScheduledCount');
         if (scheduledStat) {
             let val = parseInt(scheduledStat.textContent) || 0;
@@ -250,18 +236,21 @@ function updateUIDAfterCancel(aptId) {
             cancelledStat.textContent = val + 1;
         }
 
-        const activeTab = document.querySelector('#aptFilterTabs .apt-filter-btn.active');
-        if (activeTab) {
-            const currentFilter = activeTab.getAttribute('data-filter');
-            if (currentFilter === 'Scheduled') {
-                aptRow.style.transition = 'all 0.3s ease';
-                aptRow.style.opacity = '0';
-                setTimeout(() => {
-                    aptRow.style.display = 'none';
-                    aptRow.style.opacity = '1';
-                }, 300);
+        // Smoothly fade out and remove the row directly from view
+        aptRow.style.transition = 'all 0.3s ease';
+        aptRow.style.opacity = '0';
+        aptRow.style.transform = 'translateY(-10px)';
+        setTimeout(() => {
+            aptRow.remove();
+            
+            const remaining = document.querySelectorAll('#aptList .apt-row');
+            if (remaining.length === 0) {
+                const list = document.getElementById('aptList');
+                if (list) {
+                    list.innerHTML = '<p style="padding: 24px; text-align: center; color: var(--slate-500); width: 100%;">No appointments found.</p>';
+                }
             }
-        }
+        }, 300);
     }
 }
 

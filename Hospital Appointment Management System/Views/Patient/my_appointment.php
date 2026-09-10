@@ -191,7 +191,9 @@ foreach ($appointments as $apt) {
                         <?php if ($apt['status'] === 'Scheduled'): ?>
                             <button type="button" class="apt-action-btn reschedule" onclick="openRescheduleModal('<?= e($apt['appointment_id']) ?>', '<?= e(addslashes($apt['doctor_name'])) ?>', '<?= e($apt['appointment_date']) ?>', '<?= e($apt['appointment_time']) ?>', '<?= e($date_display) ?>', '<?= e($formatted_time) ?>')"><i class="fa-solid fa-rotate"></i> Reschedule</button>
                             <button type="button" class="apt-action-btn cancel" onclick="openCancelModal('<?= e($apt['appointment_id']) ?>', '<?= e(addslashes($apt['doctor_name'])) ?>', '<?= e($date_display) ?>', '<?= e($formatted_time) ?>')"><i class="fa-solid fa-xmark"></i> Cancel</button>
-                        <?php elseif ($apt['status'] === 'Expired' || $apt['status'] === 'Cancelled'): ?>
+                        <?php elseif ($apt['status'] === 'Expired'): ?>
+                            <button type="button" class="apt-action-btn reschedule" onclick="openRescheduleModal('<?= e($apt['appointment_id']) ?>', '<?= e(addslashes($apt['doctor_name'])) ?>', '<?= e($apt['appointment_date']) ?>', '<?= e($apt['appointment_time']) ?>', '<?= e($date_display) ?>', '<?= e($formatted_time) ?>')"><i class="fa-solid fa-rotate"></i> Reschedule</button>
+                        <?php elseif ($apt['status'] === 'Cancelled' && !empty($apt['is_doctor_leave'])): ?>
                             <button type="button" class="apt-action-btn reschedule" onclick="openRescheduleModal('<?= e($apt['appointment_id']) ?>', '<?= e(addslashes($apt['doctor_name'])) ?>', '<?= e($apt['appointment_date']) ?>', '<?= e($apt['appointment_time']) ?>', '<?= e($date_display) ?>', '<?= e($formatted_time) ?>')"><i class="fa-solid fa-rotate"></i> Reschedule</button>
                         <?php endif; ?>
                     </div>
